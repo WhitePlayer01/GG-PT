@@ -3,19 +3,22 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <title>二爷收着</title>
+  <title>云长卫</title>
   <link rel="stylesheet" href="./assets/style.css" />
 </head>
 <body>
+  <!-- 移动端优先的单列应用容器。 -->
   <main class="app-shell">
+    <!-- 品牌标题和“收”字印章。 -->
     <header class="topbar">
       <div>
         <p class="eyebrow">关将军的随身收纳簿</p>
-        <h1>二爷收着</h1>
+        <h1>云长卫</h1>
       </div>
       <div class="seal" aria-hidden="true">收</div>
     </header>
 
+    <!-- 关羽主视觉、装饰元素和实时状态台词。 -->
     <section class="hero" aria-labelledby="hero-title">
       <div class="sun-disc" aria-hidden="true"></div>
       <div class="speed-line speed-line-one" aria-hidden="true"></div>
@@ -27,6 +30,7 @@
       </div>
     </section>
 
+    <!-- 本地文件选择入口；浏览器只读取文件，不上传也不移动源文件。 -->
     <section class="action-panel" aria-labelledby="action-title">
       <div class="section-heading">
         <div>
@@ -43,6 +47,7 @@
       <input id="media-input" class="visually-hidden" type="file" accept="image/*,video/*" multiple />
     </section>
 
+    <!-- 本次文件列表、即时数量与本机累计统计。 -->
     <section class="ledger" aria-labelledby="ledger-title">
       <div class="section-heading compact">
         <div>
@@ -73,6 +78,7 @@
       <div id="result-list" class="result-list" hidden></div>
     </section>
 
+    <!-- 明确产品的离线和本机存储边界。 -->
     <footer>
       <span>离线可用</span>
       <span aria-hidden="true">·</span>
