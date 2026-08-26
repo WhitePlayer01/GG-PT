@@ -1,0 +1,26 @@
+# macOS / local editor state
+.DS_Store
+.codex/
+
+# Swift build products
+.build/
+dist/
+
+# Generated archives and promotional media
+*.zip
+*.mp3
+*.wav
+*.mp4
+
+# Local production assets that are not required to build the app
+promo_layers/
+promo_v2_layers/
+promo_vertical_layers/
+promo*_filter.txt
+reference-voice-narration-cover.png
+武将收纳箱_*.png
+武将收纳箱_*.jpg
+武将收纳箱_*.txt
+
+# Local skill development copies
+skills/

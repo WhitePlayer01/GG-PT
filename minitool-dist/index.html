@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>二爷收着</title>
+  <link rel="stylesheet" href="./assets/style.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">关将军的随身收纳簿</p>
+        <h1>二爷收着</h1>
+      </div>
+      <div class="seal" aria-hidden="true">收</div>
+    </header>
+
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="sun-disc" aria-hidden="true"></div>
+      <div class="speed-line speed-line-one" aria-hidden="true"></div>
+      <div class="speed-line speed-line-two" aria-hidden="true"></div>
+      <img class="general" src="./assets/guan-yu.png" alt="手持青龙偃月刀的关羽卡通形象" />
+      <div class="speech" id="hero-title" role="status" aria-live="polite">
+        <span class="speech-kicker">今日当值</span>
+        <strong id="hero-message">图片视频，尽管交来</strong>
+      </div>
+    </section>
+
+    <section class="action-panel" aria-labelledby="action-title">
+      <div class="section-heading">
+        <div>
+          <p class="section-number">01 / 收纳</p>
+          <h2 id="action-title">选取图片或视频</h2>
+        </div>
+        <span class="offline-badge">本地处理</span>
+      </div>
+      <p class="helper">素材只在当前设备中读取；小工具不会上传，也不会移动系统文件。</p>
+      <label class="pick-button" for="media-input">
+        <span class="pick-icon" aria-hidden="true">＋</span>
+        <span>交给二爷</span>
+      </label>
+      <input id="media-input" class="visually-hidden" type="file" accept="image/*,video/*" multiple />
+    </section>
+
+    <section class="ledger" aria-labelledby="ledger-title">
+      <div class="section-heading compact">
+        <div>
+          <p class="section-number">02 / 点将</p>
+          <h2 id="ledger-title">本次收纳</h2>
+        </div>
+        <button id="clear-button" class="text-button" type="button">清空记录</button>
+      </div>
+
+      <div class="stats" aria-label="收纳统计">
+        <div class="stat-card">
+          <span>本次</span>
+          <strong id="current-count">0</strong>
+          <small>件素材</small>
+        </div>
+        <div class="stat-card accent">
+          <span>累计</span>
+          <strong id="total-count">0</strong>
+          <small>件素材</small>
+        </div>
+      </div>
+
+      <div id="empty-state" class="empty-state">
+        <span class="empty-mark" aria-hidden="true">令</span>
+        <p>尚未点将</p>
+        <small>选择图片或视频后，这里会按类型列出</small>
+      </div>
+      <div id="result-list" class="result-list" hidden></div>
+    </section>
+
+    <footer>
+      <span>离线可用</span>
+      <span aria-hidden="true">·</span>
+      <span>记录保存在本机</span>
+    </footer>
+  </main>
+
+  <script src="./assets/main.js"></script>
+</body>
+</html>

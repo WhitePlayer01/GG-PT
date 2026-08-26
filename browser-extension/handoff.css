@@ -1,0 +1,11 @@
+:root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; }
+* { box-sizing: border-box; }
+body { min-height: 100vh; margin: 0; display: grid; place-items: center; color: #181813; background: #f4eddf; }
+main { width: min(460px, calc(100vw - 40px)); padding: 42px; border: 1px solid #181813; background: rgba(255,255,255,.35); box-shadow: 8px 8px 0 #d5a943; }
+.seal { float: right; display: grid; width: 46px; height: 46px; place-items: center; border: 2px solid #c83b32; color: #c83b32; font: 900 24px "Songti SC", serif; transform: rotate(4deg); }
+.eyebrow { margin: 0 0 8px; color: #174d36; font-size: 12px; font-weight: 800; letter-spacing: .15em; }
+h1 { margin: 0 0 16px; font: 700 32px "Songti SC", serif; }
+p { line-height: 1.7; }
+a, button { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: center; margin-top: 16px; border: 1px solid #181813; font: inherit; font-weight: 700; cursor: pointer; }
+a { color: #f4eddf; background: #174d36; text-decoration: none; }
+button { color: #181813; background: transparent; }

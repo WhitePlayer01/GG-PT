@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "二爷收着 · 网页投递",
+  "description": "右键把网页、链接、图片、音频或视频交给 Mac 上的二爷收着。",
+  "version": "0.1.0",
+  "permissions": ["contextMenus", "tabs"],
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "action": {
+    "default_title": "二爷收着"
+  }
+}
