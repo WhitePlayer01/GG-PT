@@ -1,10 +1,24 @@
 # macOS / local editor state
 .DS_Store
 .codex/
+xcuserdata/
 
-# Swift build products
+# Swift and Xcode build products
 .build/
 dist/
+*.hmap
+*.ipa
+*.dSYM
+*.dSYM.zip
+timeline.xctimeline
+playground.xcworkspace
+Carthage/Build/
+
+# Fastlane generated output
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output
 
 # Generated archives and promotional media
 *.zip
