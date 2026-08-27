@@ -1,6 +1,16 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// 桌宠对一次收纳任务的四种可见状态。
+private enum PetVisualState: String {
+    case idle
+    case receiving
+    case failure
+    case complete
+
+    var artworkName: String { "guan-yu-\(rawValue)" }
+}
+
 /// 展示可拖动、可接收 Finder 文件的关羽桌宠主界面。
 struct PetView: View {
     @ObservedObject var settings: SettingsStore
@@ -10,10 +20,15 @@ struct PetView: View {
     let patrolNow: () -> Void
 
     @State private var isTargeted = false
-    @State private var videoFrameIndex = 0
     @State private var message = "把文件交给关将军"
     @State private var messageVisible = true
-    @State private var isAnimating = false
+    @State private var visualState: PetVisualState = .idle
+    @State private var ambientMotion = false
+    @State private var reactionOffset: CGFloat = 0
+    @State private var reactionRotation = 0.0
+    @State private var reactionScale: CGFloat = 1
+    @State private var stateSequence = 0
+    @State private var messageSequence = 0
 
     /// 组合投放高亮、角色动画、设置入口和结果消息气泡。
     var body: some View {
@@ -28,16 +43,26 @@ struct PetView: View {
                     .transition(.scale.combined(with: .opacity))
             }
 
-            Group {
-                if isAnimating {
-                    SwordAnimationArtwork(frameIndex: videoFrameIndex)
-                } else {
-                    PetArtwork()
-                }
+            if visualState == .complete && !isTargeted {
+                Circle()
+                    .stroke(Color.yellow.opacity(ambientMotion ? 0.08 : 0.48), lineWidth: 4)
+                    .frame(width: ambientMotion ? 260 : 205, height: ambientMotion ? 260 : 205)
+                    .scaleEffect(ambientMotion ? 1.06 : 0.88)
+                    .transition(.scale.combined(with: .opacity))
+            } else if visualState == .failure && !isTargeted {
+                Circle()
+                    .fill(Color.red.opacity(ambientMotion ? 0.05 : 0.14))
+                    .frame(width: 225, height: 225)
+                    .scaleEffect(ambientMotion ? 1.04 : 0.94)
+                    .transition(.opacity)
             }
+
+            StatePetArtwork(state: isTargeted ? .receiving : visualState)
                 .scaledToFit()
                 .frame(width: 245, height: 275)
-                .offset(y: 18)
+                .scaleEffect(characterScale, anchor: .bottom)
+                .rotationEffect(.degrees(reactionRotation), anchor: .bottom)
+                .offset(x: reactionOffset, y: characterYOffset)
                 .shadow(color: .black.opacity(0.18), radius: 5, y: 4)
 
             VStack {
@@ -88,14 +113,36 @@ struct PetView: View {
         }
         .animation(.spring(response: 0.24, dampingFraction: 0.7), value: isTargeted)
         .onAppear {
-            DispatchQueue.global(qos: .utility).async {
-                SwordAnimationArtwork.preload()
+            withAnimation(.easeInOut(duration: 1.65).repeatForever(autoreverses: true)) {
+                ambientMotion = true
             }
         }
         .onChange(of: events.sequence) { _ in
-            playSwordAnimation()
-            showMessage(events.message)
+            showMessage(events.message, outcome: inferredOutcome(for: events.message))
         }
+    }
+
+    /// 不同状态共用轻量位移动画，避免桌面常驻角色产生过强干扰。
+    private var characterYOffset: CGFloat {
+        if isTargeted { return ambientMotion ? 10 : 15 }
+        switch visualState {
+        case .idle: return ambientMotion ? 16 : 20
+        case .receiving: return 18
+        case .failure: return ambientMotion ? 19 : 21
+        case .complete: return ambientMotion ? 13 : 18
+        }
+    }
+
+    private var characterScale: CGFloat {
+        let ambientScale: CGFloat
+        if isTargeted {
+            ambientScale = ambientMotion ? 1.035 : 1.01
+        } else if visualState == .idle {
+            ambientScale = ambientMotion ? 1.008 : 0.996
+        } else {
+            ambientScale = 1
+        }
+        return ambientScale * reactionScale
     }
 
     /// 将 Finder 拖放提供者异步转换为文件 URL，并在主线程统一整理。
@@ -127,10 +174,10 @@ struct PetView: View {
 
         group.notify(queue: .main) {
             guard !urls.isEmpty else {
-                showMessage("没接稳，再试一次")
+                showMessage("没接稳，再试一次", outcome: .failure)
                 return
             }
-            playSwordAnimation()
+            visualState = .receiving
             // 所有拖放文件作为一个批次写入历史，方便一次撤回。
             let result = FileOrganizer.organize(urls, settings: settings)
             history.record(result, source: "拖放")
@@ -139,15 +186,15 @@ struct PetView: View {
                 settings.markOnboardingSampleDropped()
             }
             if result.movedCount > 0 && result.duplicateCount > 0 {
-                showMessage("收了 \(result.movedCount) 件，另有 \(result.duplicateCount) 件重复已留在原处")
+                showMessage("收了 \(result.movedCount) 件，另有 \(result.duplicateCount) 件重复已留在原处", outcome: .complete)
             } else if result.movedCount > 0 && result.failures.isEmpty {
-                showMessage("收了 \(result.movedCount) 件！已归入\(result.categoryNames.joined(separator: "、"))")
+                showMessage("收了 \(result.movedCount) 件！已归入\(result.categoryNames.joined(separator: "、"))", outcome: .complete)
             } else if result.movedCount > 0 {
-                showMessage("收了 \(result.movedCount) 件，另有 \(result.failures.count) 件失败")
+                showMessage("收了 \(result.movedCount) 件，另有 \(result.failures.count) 件失败", outcome: .failure)
             } else if result.duplicateCount > 0 {
-                showMessage("发现 \(result.duplicateCount) 件重复文件，已留在原处")
+                showMessage("发现 \(result.duplicateCount) 件重复文件，已留在原处", outcome: .complete)
             } else {
-                showMessage("未能收纳：\(result.failures.first ?? "未知错误")")
+                showMessage("未能收纳：\(result.failures.first ?? "未知错误")", outcome: .failure)
             }
         }
         return true
@@ -156,62 +203,94 @@ struct PetView: View {
     /// 撤回历史中最近一批可恢复文件，并把部分失败情况展示给用户。
     private func undoLast() {
         guard let result = history.undoLast() else {
-            showMessage("暂无可撤回的收纳")
+            showMessage("暂无可撤回的收纳", outcome: .failure)
             return
         }
         if result.failures.isEmpty {
-            showMessage("已撤回 \(result.restoredCount) 件")
+            showMessage("已撤回 \(result.restoredCount) 件", outcome: .complete)
         } else if result.restoredCount > 0 {
-            showMessage("撤回 \(result.restoredCount) 件，另有 \(result.failures.count) 件未恢复")
+            showMessage("撤回 \(result.restoredCount) 件，另有 \(result.failures.count) 件未恢复", outcome: .failure)
         } else {
-            showMessage("撤回失败：\(result.failures.first ?? "未知错误")")
+            showMessage("撤回失败：\(result.failures.first ?? "未知错误")", outcome: .failure)
         }
     }
 
-    /// 以 18 FPS 播放 73 帧挥刀序列，并在结束后恢复待机图。
-    private func playSwordAnimation() {
-        guard !isAnimating else { return }
-        isAnimating = true
-        videoFrameIndex = 0
-        let frameCount = 73
-        let framesPerSecond = 18.0
+    /// 跨服务消息没有显式状态时，按稳定关键词选择完成或失败反馈。
+    private func inferredOutcome(for text: String) -> PetVisualState {
+        let failureWords = ["失败", "未能", "未完成", "没接稳", "错误"]
+        return failureWords.contains(where: text.contains) ? .failure : .complete
+    }
 
-        for index in 1..<frameCount {
-            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) / framesPerSecond) {
-                guard isAnimating else { return }
-                videoFrameIndex = index
+    /// 展示状态气泡和对应动作，结束后恢复低干扰待机循环。
+    private func showMessage(_ text: String, outcome: PetVisualState) {
+        stateSequence += 1
+        let currentStateSequence = stateSequence
+        visualState = outcome
+        reactionOffset = 0
+        reactionRotation = 0
+        reactionScale = outcome == .complete ? 0.9 : 1
+
+        if outcome == .complete {
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.52)) {
+                reactionScale = 1.055
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                guard currentStateSequence == stateSequence else { return }
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                    reactionScale = 1
+                }
+            }
+        } else {
+            let shake: [(Double, CGFloat, Double)] = [
+                (0.00, -7, -2.0), (0.08, 7, 2.0), (0.16, -5, -1.4),
+                (0.24, 4, 1.0), (0.32, 0, 0)
+            ]
+            for (delay, offset, rotation) in shake {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard currentStateSequence == stateSequence else { return }
+                    withAnimation(.easeOut(duration: 0.08)) {
+                        reactionOffset = offset
+                        reactionRotation = rotation
+                    }
+                }
             }
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + Double(frameCount) / framesPerSecond) {
-            isAnimating = false
-            videoFrameIndex = 0
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.2) {
+            guard currentStateSequence == stateSequence, !isTargeted else { return }
+            withAnimation(.easeInOut(duration: 0.28)) {
+                visualState = .idle
+                reactionScale = 1
+            }
         }
-    }
 
-    /// 展示状态气泡，并在四秒后使用动画自动隐藏。
-    private func showMessage(_ text: String) {
+        messageSequence += 1
+        let currentMessageSequence = messageSequence
         message = text
         withAnimation { messageVisible = true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            guard currentMessageSequence == messageSequence else { return }
             withAnimation { messageVisible = false }
         }
     }
 }
 
-/// 从应用资源或开发目录读取桌宠待机图。
-struct PetArtwork: View {
+/// 从应用资源或开发目录读取四态桌宠立绘。
+private struct StatePetArtwork: View {
     private let artwork: NSImage?
 
     /// 优先从打包后的 Bundle 读取资源，开发运行时回退到源码目录。
-    init() {
-        if let url = Bundle.main.url(forResource: "guan-yu-v2", withExtension: "png") {
+    init(state: PetVisualState) {
+        if let url = Bundle.main.url(forResource: state.artworkName, withExtension: "png") {
             artwork = NSImage(contentsOf: url)
         } else {
             let developmentURL = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
-                .appendingPathComponent("Resources/guan-yu-v2.png")
-            artwork = NSImage(contentsOf: developmentURL)
+                .appendingPathComponent("Resources/\(state.artworkName).png")
+            let fallbackURL = developmentURL
+                .deletingLastPathComponent()
+                .appendingPathComponent("guan-yu-v2.png")
+            artwork = NSImage(contentsOf: developmentURL) ?? NSImage(contentsOf: fallbackURL)
         }
     }
 
@@ -229,52 +308,9 @@ struct PetArtwork: View {
     }
 }
 
-/// 读取并缓存逐帧挥刀动画资源。
-private struct SwordAnimationArtwork: View {
-    private static let cache: NSCache<NSNumber, NSImage> = {
-        let cache = NSCache<NSNumber, NSImage>()
-        cache.countLimit = 73
-        return cache
-    }()
-    private let artwork: NSImage?
-
-    /// 读取指定索引对应的动画帧。
-    init(frameIndex: Int) {
-        artwork = Self.load(frameIndex: frameIndex)
-    }
-
-    /// 在后台提前装载全部帧，避免首次拖放时逐帧卡顿。
-    static func preload() {
-        for index in 0..<73 { _ = load(frameIndex: index) }
-    }
-
-    /// 从内存缓存、应用 Bundle 或开发目录依次寻找指定帧。
-    private static func load(frameIndex: Int) -> NSImage? {
-        let key = NSNumber(value: frameIndex)
-        if let cached = cache.object(forKey: key) { return cached }
-
-        let name = String(format: "frame-%03d", frameIndex + 1)
-        let packagedURL = Bundle.main.url(
-            forResource: name,
-            withExtension: "png",
-            subdirectory: "sword-animation"
-        )
-        let developmentURL = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent()
-            .appendingPathComponent("Resources/sword-animation/\(name).png")
-        let image = NSImage(contentsOf: packagedURL ?? developmentURL)
-        if let image { cache.setObject(image, forKey: key) }
-        return image
-    }
-
-    /// 显示当前动画帧；资源缺失时回退到待机图。
+/// 设置页与首次引导沿用待机形象，不参与桌宠状态切换。
+struct PetArtwork: View {
     var body: some View {
-        Group {
-            if let artwork {
-                Image(nsImage: artwork).resizable()
-            } else {
-                PetArtwork()
-            }
-        }
+        StatePetArtwork(state: .idle)
     }
 }

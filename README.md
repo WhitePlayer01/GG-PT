@@ -24,7 +24,7 @@
 - 右键桌宠可打开设置、收纳箱或退出
 - 55%–145% 宠物尺寸调节，窗口会随宠物一起缩放
 - 可在设置中显示或隐藏桌宠右上角的设置图标
-- 拖放后播放由参考视频转换得到的 4.1 秒透明挥刀动画
+- 四态角色反馈：待机呼吸、拖入接收、失败摇头、完成庆功；均使用透明角色立绘并自动回到待机
 - 首次启动两步引导：选择收纳箱，并真实拖放示例文件
 
 设置图标隐藏后，仍可右键桌宠选择“收纳设置…”，因此不会失去设置入口。
@@ -110,6 +110,27 @@ swift run PetSorter
 > 构建脚本会把角色图片放入标准的 `Contents/Resources` 目录，
 > 应用通过主 Bundle 直接读取，确保独立运行时也能正确显示。
 
+## 一键生成 DMG 安装包
+
+打包前请确认当前 Mac 已安装 Swift 6 工具链或 Xcode Command Line Tools。直接双击项目根目录的 `一键打包.command`，脚本会自动完成以下流程：
+
+1. 使用 release 配置编译应用。
+2. 装配并临时签名 `云长卫.app`。
+3. 创建包含应用和“Applications”快捷方式的压缩 DMG。
+4. 成功后自动打开 `dist` 文件夹。
+
+需要在终端或持续集成环境中打包时，运行：
+
+```bash
+./scripts/build-dmg.sh
+```
+
+应用版本读取自 `AppInfo.plist` 的 `CFBundleShortVersionString`，生成文件名同时包含版本和当前 Mac 架构，例如 `dist/云长卫-0.2.0-arm64.dmg`。相同版本与架构的旧产物会被新产物替换。
+
+打开生成的安装包后，将“云长卫”拖入“Applications”即可安装。`dist` 是本机构建目录，已被 Git 忽略，不会把 DMG 二进制文件提交到仓库。
+
+> 当前产物使用本机临时签名，适合本机测试或内部传发。若要公开分发并消除 Gatekeeper 警告，还需要配置 Apple Developer ID 签名与公证。
+
 ## 项目结构
 
 - `Sources/PetSorter`：macOS SwiftUI 桌面应用
@@ -117,6 +138,8 @@ swift run PetSorter
 - `browser-extension`：Chrome、Edge 等 Chromium 浏览器扩展
 - `minitool-dist`：可离线使用的移动端网页小工具
 - `scripts/build-app.sh`：release 构建、资源装配和本机签名脚本
+- `scripts/build-dmg.sh`：构建 App 并生成压缩 DMG 安装包
+- `一键打包.command`：可双击执行的一键打包入口
 - `AppInfo.plist`：应用标识、版本、深链和辅助应用配置
 
 ## 安装浏览器扩展

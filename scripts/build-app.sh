@@ -24,9 +24,13 @@ if [[ -d "$LEGACY_APP_DIR" ]]; then
     rm -rf "$LEGACY_APP_DIR"
 fi
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-# 复制可执行文件、应用图标、桌宠立绘和逐帧动画资源。
+# 复制可执行文件、应用图标、四态桌宠立绘和兼容保留的逐帧动画资源。
 cp "$BUILD_DIR/PetSorter" "$APP_DIR/Contents/MacOS/PetSorter"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-v2.png" "$APP_DIR/Contents/Resources/guan-yu-v2.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-idle.png" "$APP_DIR/Contents/Resources/guan-yu-idle.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-receiving.png" "$APP_DIR/Contents/Resources/guan-yu-receiving.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-failure.png" "$APP_DIR/Contents/Resources/guan-yu-failure.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-complete.png" "$APP_DIR/Contents/Resources/guan-yu-complete.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 cp -R "$PROJECT_DIR/Sources/PetSorter/Resources/sword-animation" "$APP_DIR/Contents/Resources/"
 # 写入 Info.plist，并进行本机临时签名以便直接运行和验证。
