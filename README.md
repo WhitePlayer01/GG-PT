@@ -116,8 +116,9 @@ swift run PetSorter
 
 1. 使用 release 配置编译应用。
 2. 装配并临时签名 `云长卫.app`。
-3. 创建包含应用和“Applications”快捷方式的压缩 DMG。
-4. 成功后自动打开 `dist` 文件夹。
+3. 使用应用的 `AppIcon.icns` 作为 DMG 文件及安装盘图标。
+4. 创建包含应用和“Applications”快捷方式的压缩 DMG。
+5. 成功后自动打开 `dist` 文件夹。
 
 需要在终端或持续集成环境中打包时，运行：
 
