@@ -60,7 +60,11 @@ struct UndoResult {
 /// 执行规则匹配、分类、查重、命名、移动和撤回的核心整理引擎。
 enum FileOrganizer {
     /// 按当前设置整理一批文件，并为每个成功移动的文件生成可撤回记录。
-    static func organize(_ urls: [URL], settings: SettingsStore) -> SortResult {
+    static func organize(
+        _ urls: [URL],
+        settings: SettingsStore,
+        forcedDestinationFolder: String? = nil
+    ) -> SortResult {
         let manager = FileManager.default
         let base = URL(fileURLWithPath: settings.baseDirectory, isDirectory: true)
         var movedItems: [FileMoveRecord] = []
@@ -72,7 +76,10 @@ enum FileOrganizer {
             // 自定义军令优先于内置八分类，首个命中的规则立即生效。
             let category = category(for: source, manager: manager)
             let rule = matchingRule(for: source, rules: settings.sortingRules, manager: manager)
-            let folderName = rule.map { safeRelativeFolder($0.destinationFolder) } ?? settings.subfolder(for: category)
+            let requestedFolder = forcedDestinationFolder?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let folderName = requestedFolder.isEmpty
+                ? (rule.map { safeRelativeFolder($0.destinationFolder) } ?? settings.subfolder(for: category))
+                : safeRelativeFolder(requestedFolder)
             var destinationFolder = base.appendingPathComponent(folderName, isDirectory: true)
             if settings.organizeByYearMonth {
                 // 年月目录采用文件自身日期，避免旧素材全部落入导入当天。
@@ -179,7 +186,7 @@ enum FileOrganizer {
     }
 
     /// 根据目录属性或扩展名返回内置文件分类。
-    private static func category(for url: URL, manager: FileManager) -> FileCategory {
+    static func category(for url: URL, manager: FileManager = .default) -> FileCategory {
         var isDirectory: ObjCBool = false
         if manager.fileExists(atPath: url.path, isDirectory: &isDirectory), isDirectory.boolValue {
             return .folders

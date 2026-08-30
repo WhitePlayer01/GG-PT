@@ -28,6 +28,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var scaleCancellable: AnyCancellable?
     private var opacityCancellable: AnyCancellable?
     private var updateCancellable: AnyCancellable?
+    private var screenCancellable: AnyCancellable?
+    private var browserBridge: BrowserBridgeServer?
+    private var moveWorkItem: DispatchWorkItem?
+    private var isAdjustingPetWindow = false
     /// 记录已弹窗的远端版本，避免观察回调重复提示。
     private var lastPresentedUpdateVersion: String?
 
@@ -35,6 +39,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         showPet()
+        startBrowserBridge()
+        observeScreenChanges()
         patrol.start()
         observeUpdates()
         if settings.hasCompletedOnboarding {
@@ -46,38 +52,85 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// 接收浏览器扩展发来的 `erye://collect` 深链并异步保存网页素材。
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme == "erye" {
+        for url in urls where url.scheme == "erye" && url.host == "collect" {
             Task { [weak self] in
                 guard let self else { return }
-                do {
-                    let result = try await WebCollector.collect(
-                        deepLink: url,
-                        settings: settings,
-                        history: history
-                    )
-                    if result.movedCount > 0 {
-                        events.announce("网页军报已收！归入\(result.categoryNames.joined(separator: "、"))")
-                    } else if result.duplicateCount > 0 {
-                        events.announce("网页素材与收纳箱内容重复，已跳过")
-                    } else {
-                        events.announce("网页投递失败：\(result.failures.first ?? "未能保存")")
-                    }
-                } catch {
-                    events.announce("网页投递失败：\(error.localizedDescription)")
-                }
+                _ = await collectWebPayload(url)
             }
+        }
+    }
+
+    /// App 运行时接受扩展直连，避免打开外部协议中转页。
+    private func startBrowserBridge() {
+        let bridge = BrowserBridgeServer { [weak self] values, completion in
+            guard let self else {
+                completion(.init(success: false, message: "云长卫未就绪"))
+                return
+            }
+            var components = URLComponents()
+            components.scheme = "erye"
+            components.host = "collect"
+            components.queryItems = values.map { URLQueryItem(name: $0.key, value: $0.value) }
+            guard let url = components.url else {
+                completion(.init(success: false, message: "投递参数无效"))
+                return
+            }
+            Task {
+                completion(await self.collectWebPayload(url))
+            }
+        }
+        bridge.start()
+        browserBridge = bridge
+    }
+
+    /// 统一处理直连和外部协议投递，并向桌宠发布明确的成败反馈。
+    private func collectWebPayload(_ url: URL) async -> BrowserBridgeResponse {
+        do {
+            let result = try await WebCollector.collect(
+                deepLink: url,
+                settings: settings,
+                history: history
+            )
+            if result.movedCount > 0 {
+                let message = "收纳成功：已归入\(result.categoryNames.joined(separator: "、"))"
+                events.announce(
+                    message,
+                    outcome: .complete,
+                    category: FileCategory(rawValue: result.categoryNames.first ?? "")
+                )
+                return .init(success: true, message: message)
+            }
+            if result.duplicateCount > 0 {
+                let message = "图片已存在，未重复收纳"
+                events.announce(message, outcome: .complete)
+                return .init(success: true, message: message)
+            }
+            let message = "收纳失败：\(result.failures.first ?? "未能保存")"
+            events.announce(message, outcome: .failure)
+            return .init(success: false, message: message)
+        } catch {
+            let message = "收纳失败：\(error.localizedDescription)"
+            let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let values = Dictionary(
+                (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") },
+                uniquingKeysWith: { _, latest in latest }
+            )
+            history.recordFailure(
+                error.localizedDescription,
+                source: "网页投递",
+                sourceTitle: values["pageTitle"] ?? values["title"] ?? "",
+                sourceURL: values["source"] ?? values["url"] ?? ""
+            )
+            events.announce(message, outcome: .failure)
+            return .init(success: false, message: message)
         }
     }
 
     /// 创建透明、置顶、跨桌面的无边框桌宠窗口。
     private func showPet() {
         let size = petSize(scale: settings.petScale)
-        let visibleFrame = NSScreen.main?.visibleFrame ?? .zero
-        // 桌宠以屏幕右下角为默认位置，并保留与屏幕边缘的间距。
-        let origin = NSPoint(
-            x: visibleFrame.maxX - size.width - 28,
-            y: visibleFrame.minY + 36
-        )
+        let screen = preferredPetScreen()
+        let origin = restoredPetOrigin(size: size, screen: screen)
         let window = NSWindow(
             contentRect: NSRect(origin: origin, size: size),
             styleMask: [.borderless],
@@ -92,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         window.alphaValue = settings.petOpacity
         window.hasShadow = false
         window.isMovableByWindowBackground = true
+        window.delegate = self
         window.contentView = NSHostingView(
             rootView: PetView(
                 settings: settings,
@@ -126,7 +180,108 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             x: oldFrame.midX - newSize.width / 2,
             y: oldFrame.minY
         )
+        isAdjustingPetWindow = true
         window.setFrame(NSRect(origin: newOrigin, size: newSize), display: true, animate: true)
+        constrainAndSavePetWindow(window, animated: false)
+        isAdjustingPetWindow = false
+    }
+
+    /// 用户停止拖动后吸附到当前显示器边缘，并持久化多屏相对位置。
+    func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              window === petWindow,
+              !isAdjustingPetWindow else { return }
+        moveWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self, weak window] in
+            guard let self, let window else { return }
+            self.constrainAndSavePetWindow(window, animated: self.settings.snapToScreenEdges)
+        }
+        moveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18, execute: work)
+    }
+
+    /// 监听显示器接入、拔出和分辨率变化，把桌宠带回仍可见的屏幕区域。
+    private func observeScreenChanges() {
+        screenCancellable = NotificationCenter.default.publisher(
+            for: NSApplication.didChangeScreenParametersNotification
+        )
+        .receive(on: RunLoop.main)
+        .sink { [weak self] _ in
+            guard let self, let window = self.petWindow else { return }
+            self.constrainAndSavePetWindow(window, animated: true)
+        }
+    }
+
+    private func preferredPetScreen() -> NSScreen {
+        NSScreen.screens.first(where: { screenIdentifier($0) == settings.savedPetScreenID })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first!
+    }
+
+    private func restoredPetOrigin(size: NSSize, screen: NSScreen) -> NSPoint {
+        let visible = screen.visibleFrame
+        guard settings.savedPetPositionX >= 0, settings.savedPetPositionY >= 0 else {
+            return NSPoint(x: visible.maxX - size.width - 28, y: visible.minY + 36)
+        }
+        let center = NSPoint(
+            x: visible.minX + visible.width * settings.savedPetPositionX,
+            y: visible.minY + visible.height * settings.savedPetPositionY
+        )
+        return clampedOrigin(
+            NSPoint(x: center.x - size.width / 2, y: center.y - size.height / 2),
+            size: size,
+            visibleFrame: visible
+        )
+    }
+
+    private func constrainAndSavePetWindow(_ window: NSWindow, animated: Bool) {
+        let screen = bestScreen(for: window.frame)
+        let visible = screen.visibleFrame.insetBy(dx: 10, dy: 10)
+        var origin = clampedOrigin(window.frame.origin, size: window.frame.size, visibleFrame: visible)
+
+        if settings.snapToScreenEdges {
+            let threshold: CGFloat = 88
+            let left = abs(origin.x - visible.minX)
+            let right = abs((origin.x + window.frame.width) - visible.maxX)
+            if min(left, right) < threshold {
+                origin.x = left < right ? visible.minX : visible.maxX - window.frame.width
+            }
+            let bottom = abs(origin.y - visible.minY)
+            let top = abs((origin.y + window.frame.height) - visible.maxY)
+            if min(bottom, top) < threshold {
+                origin.y = bottom < top ? visible.minY : visible.maxY - window.frame.height
+            }
+        }
+
+        isAdjustingPetWindow = true
+        window.setFrame(NSRect(origin: origin, size: window.frame.size), display: true, animate: animated)
+        isAdjustingPetWindow = false
+        let centerX = (window.frame.midX - visible.minX) / max(visible.width, 1)
+        let centerY = (window.frame.midY - visible.minY) / max(visible.height, 1)
+        settings.savePetPosition(
+            screenID: screenIdentifier(screen),
+            normalizedX: centerX,
+            normalizedY: centerY
+        )
+    }
+
+    private func bestScreen(for frame: NSRect) -> NSScreen {
+        NSScreen.screens.max {
+            $0.visibleFrame.intersection(frame).width * $0.visibleFrame.intersection(frame).height
+                < $1.visibleFrame.intersection(frame).width * $1.visibleFrame.intersection(frame).height
+        } ?? preferredPetScreen()
+    }
+
+    private func screenIdentifier(_ screen: NSScreen) -> String {
+        (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?.stringValue
+            ?? screen.localizedName
+    }
+
+    private func clampedOrigin(_ origin: NSPoint, size: NSSize, visibleFrame: NSRect) -> NSPoint {
+        NSPoint(
+            x: min(max(origin.x, visibleFrame.minX), visibleFrame.maxX - size.width),
+            y: min(max(origin.y, visibleFrame.minY), visibleFrame.maxY - size.height)
+        )
     }
 
     /// 懒创建并显示设置窗口。

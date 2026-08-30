@@ -1,12 +1,13 @@
 import SwiftUI
 import AppKit
 
-/// 设置页的五个任务导向分区。
+/// 设置页的六个任务导向分区。
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "常规"
     case automation = "自动化"
     case rules = "高级军令"
     case report = "战报"
+    case history = "收纳记录"
     case updates = "版本更新"
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .automation: return "clock.arrow.2.circlepath"
         case .rules: return "list.bullet.rectangle.portrait"
         case .report: return "chart.bar.xaxis"
+        case .history: return "clock.arrow.circlepath"
         case .updates: return "arrow.down.app"
         }
     }
@@ -27,6 +29,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .automation: return "让桌面和下载目录按计划保持整洁"
         case .rules: return "用来源、类型、大小和时间定义精确军令"
         case .report: return "查看今日行动和最近一次可撤回记录"
+        case .history: return "查看最近三天的收纳结果与文件去向"
         case .updates: return "管理版本检查与应用下载"
         }
     }
@@ -95,24 +98,74 @@ struct SettingsView: View {
             }
 
             GroupBox("桌宠外观") {
-                HStack(spacing: 12) {
-                    Label("桌宠透明度", systemImage: "circle.lefthalf.filled")
-                        .frame(width: 110, alignment: .leading)
-                    Slider(value: $settings.petOpacity, in: 0.35...1.0, step: 0.05) { editing in
-                        // 拖动期间实时更新桌宠，结束后再保存最终值。
-                        if !editing {
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Label("桌宠透明度", systemImage: "circle.lefthalf.filled")
+                            .frame(width: 110, alignment: .leading)
+                        Slider(value: $settings.petOpacity, in: 0.35...1.0, step: 0.05) { editing in
+                            // 拖动期间实时更新桌宠，结束后再保存最终值。
+                            if !editing {
+                                settings.persistPetOpacity()
+                            }
+                        }
+                        Text("\(Int(settings.petOpacity * 100))%")
+                            .monospacedDigit()
+                            .frame(width: 46, alignment: .trailing)
+                        Button("恢复默认") {
+                            settings.petOpacity = 1.0
                             settings.persistPetOpacity()
                         }
                     }
-                    Text("\(Int(settings.petOpacity * 100))%")
-                        .monospacedDigit()
-                        .frame(width: 46, alignment: .trailing)
-                    Button("恢复默认") {
-                        settings.petOpacity = 1.0
-                        settings.persistPetOpacity()
+                    HStack {
+                        Toggle("靠近屏幕边缘时自动吸附", isOn: $settings.snapToScreenEdges)
+                        Spacer()
+                        Toggle("显示今日数量与连续天数", isOn: $settings.showsDailyBadge)
                     }
                 }
                 .padding(8)
+            }
+
+            GroupBox("角色、兵器与主题") {
+                HStack(alignment: .top, spacing: 18) {
+                    PetArtwork(skin: settings.petSkin)
+                        .scaledToFit()
+                        .frame(width: 104, height: 124)
+                        .padding(8)
+                        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                    VStack(spacing: 11) {
+                        appearancePicker("角色皮肤", selection: $settings.petSkin) {
+                            ForEach(PetSkin.allCases) { skin in
+                                Text("\(skin.label) · \(skin.detail)").tag(skin)
+                            }
+                        }
+                        appearancePicker("兵器光效", selection: $settings.petWeapon) {
+                            ForEach(PetWeapon.allCases) { weapon in
+                                Text(weapon.label).tag(weapon)
+                            }
+                        }
+                        appearancePicker("桌宠主题", selection: $settings.petTheme) {
+                            ForEach(PetTheme.allCases) { theme in
+                                Text(theme.label).tag(theme)
+                            }
+                        }
+                    }
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack {
+                        Toggle("播放状态音效", isOn: $settings.soundEffectsEnabled)
+                        Spacer()
+                        Toggle("节气与节日限定表现", isOn: $settings.seasonalEffectsEnabled)
+                    }
+                    Toggle("安静模式（关闭声音，并降低常驻与结果动画幅度）", isOn: $settings.quietMode)
+                    if let moment = SeasonalMoment.current(), settings.seasonalEffectsEnabled {
+                        Label("当前限定：\(moment.name) · \(moment.greeting)", systemImage: moment.symbol)
+                            .font(.caption)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             }
 
             GroupBox("分类子目录") {
@@ -235,9 +288,10 @@ struct SettingsView: View {
                 // 战报由历史记录实时计算，不维护第二份易失真的统计数据。
                 let summary = history.todaySummary
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 24) {
+                    HStack(spacing: 18) {
                         reportValue("已收", value: summary.movedCount, suffix: "件")
                         reportValue("行动", value: summary.operationCount, suffix: "次")
+                        reportValue("连续", value: history.currentStreak, suffix: "天")
                         reportValue("重复", value: summary.duplicateCount, suffix: "件")
                         reportTextValue("节省", value: readableByteCount(summary.savedBytes))
                         reportValue("失败", value: summary.failureCount, suffix: "件")
@@ -273,6 +327,44 @@ struct SettingsView: View {
                     }
                 }
                 .padding(8)
+            }
+            }
+
+            if selectedSection == .history {
+            GroupBox {
+                HStack(spacing: 12) {
+                    Label("仅保留最近 \(OperationHistoryStore.retentionDays) 天", systemImage: "calendar.badge.clock")
+                        .fontWeight(.medium)
+                    Spacer()
+                    Text("共 \(history.operations.count) 次行动")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
+            if history.operations.isEmpty {
+                VStack(spacing: 10) {
+                    Image(systemName: "tray")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.tertiary)
+                    Text("近三天还没有收纳记录")
+                        .fontWeight(.medium)
+                    Text("拖放、自动巡查和网页投递都会记录在这里。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 70)
+            } else {
+                LazyVStack(spacing: 12) {
+                    ForEach(history.operations) { operation in
+                        HistoryOperationCard(
+                            operation: operation,
+                            baseDirectory: settings.baseDirectory
+                        )
+                    }
+                }
             }
             }
 
@@ -318,6 +410,9 @@ struct SettingsView: View {
         .frame(minWidth: 860, minHeight: 700)
         .groupBoxStyle(TasteGroupBoxStyle())
         .background(Color(nsColor: .windowBackgroundColor))
+        .onChange(of: selectedSection) { section in
+            if section == .history { history.pruneExpiredHistory() }
+        }
     }
 
     /// 左侧任务导航使用低对比暖色表面，让当前分区成为唯一强调色。
@@ -422,6 +517,22 @@ struct SettingsView: View {
         return "上次：\(Self.historyDateFormatter.string(from: date))"
     }
 
+    /// 统一角色外观选择行的标签宽度和菜单尺寸。
+    private func appearancePicker<Value: Hashable, Content: View>(
+        _ title: String,
+        selection: Binding<Value>,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 10) {
+            Text(title)
+                .foregroundStyle(.secondary)
+                .frame(width: 72, alignment: .leading)
+            Picker(title, selection: selection, content: content)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+        }
+    }
+
     /// 构建带单位的整数战报指标。
     private func reportValue(_ title: String, value: Int, suffix: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -510,6 +621,187 @@ private struct TasteGroupBoxStyle: GroupBoxStyle {
             RoundedRectangle(cornerRadius: 14)
                 .stroke(Color.primary.opacity(0.075), lineWidth: 1)
         )
+    }
+}
+
+/// 在收纳记录页展示一次行动的状态、文件去向、重复与失败详情。
+private struct HistoryOperationCard: View {
+    let operation: SortOperation
+    let baseDirectory: String
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "M月d日 HH:mm:ss"
+        return formatter
+    }()
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Image(systemName: status.icon)
+                    .foregroundStyle(status.color)
+                    .frame(width: 22)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(operation.source)
+                        .font(.system(size: 15, weight: .semibold))
+                    Text(Self.dateFormatter.string(from: operation.createdAt))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(status.label)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(status.color)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(status.color.opacity(0.1), in: Capsule())
+            }
+
+            if !operation.sourceURL.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "link")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(operation.sourceTitle.isEmpty ? "来源网页" : operation.sourceTitle)
+                            .lineLimit(1)
+                        Text(operation.sourceURL)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    Spacer()
+                    Button("打开来源") { openSource() }
+                        .buttonStyle(.borderless)
+                }
+            }
+
+            if !operation.items.isEmpty || !operation.duplicateFileNames.isEmpty || !operation.failureMessages.isEmpty || !operation.sourceURL.isEmpty {
+                Divider()
+            }
+
+            ForEach(operation.items) { item in
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.fill")
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(item.fileName)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text("去向：\(relativePath(item.destinationPath))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        if let originalPath = item.originalPath, !originalPath.isEmpty {
+                            Text("来源：\((originalPath as NSString).abbreviatingWithTildeInPath)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    Spacer()
+                    Text(item.categoryName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if FileManager.default.fileExists(atPath: item.destinationPath) {
+                        Button("显示") { reveal(item.destinationPath) }
+                            .buttonStyle(.borderless)
+                    } else {
+                        Text("文件已移动")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+            }
+
+            ForEach(Array(operation.duplicateFileNames.enumerated()), id: \.offset) { _, name in
+                detailRow(
+                    icon: "doc.on.doc.fill",
+                    title: name,
+                    detail: "目标目录已有相同内容，未重复保存",
+                    color: .orange
+                )
+            }
+
+            ForEach(Array(operation.failureMessages.enumerated()), id: \.offset) { _, message in
+                detailRow(
+                    icon: "exclamationmark.triangle.fill",
+                    title: "收纳失败",
+                    detail: message,
+                    color: .red
+                )
+            }
+        }
+        .padding(16)
+        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.primary.opacity(0.075), lineWidth: 1)
+        )
+    }
+
+    private var status: (label: String, icon: String, color: Color) {
+        if operation.failureCount > 0, operation.items.isEmpty {
+            return ("失败", "xmark.circle.fill", .red)
+        }
+        if operation.failureCount > 0 {
+            return ("部分完成", "exclamationmark.circle.fill", .orange)
+        }
+        if operation.items.isEmpty, operation.duplicateCount > 0 {
+            return ("已跳过重复", "doc.on.doc.fill", .orange)
+        }
+        return ("成功", "checkmark.circle.fill", .green)
+    }
+
+    private var summary: String {
+        var parts: [String] = []
+        if !operation.items.isEmpty { parts.append("收纳 \(operation.items.count) 件") }
+        if operation.duplicateCount > 0 { parts.append("重复 \(operation.duplicateCount) 件") }
+        if operation.failureCount > 0 { parts.append("失败 \(operation.failureCount) 件") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func relativePath(_ path: String) -> String {
+        let base = URL(fileURLWithPath: baseDirectory, isDirectory: true).standardizedFileURL.path
+        let destination = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard destination.hasPrefix(base + "/") else { return destination }
+        return String(destination.dropFirst(base.count + 1))
+    }
+
+    private func reveal(_ path: String) {
+        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+    }
+
+    private func openSource() {
+        guard let url = URL(string: operation.sourceURL),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    private func detailRow(icon: String, title: String, detail: String, color: Color) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).lineLimit(1).truncationMode(.middle)
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            Spacer()
+        }
     }
 }
 

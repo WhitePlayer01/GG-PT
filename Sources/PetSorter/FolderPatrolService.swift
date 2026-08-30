@@ -50,7 +50,7 @@ final class FolderPatrolService: ObservableObject {
         let candidates = patrolCandidates()
         settings.lastPatrolDate = Date()
         guard !candidates.isEmpty else {
-            if announcesEmpty { events.announce("巡查完毕，没有待收文件") }
+            if announcesEmpty { events.announce("巡查完毕，没有待收文件", outcome: .neutral) }
             return
         }
 
@@ -59,11 +59,15 @@ final class FolderPatrolService: ObservableObject {
         if result.movedCount > 0 {
             var message = "巡查收了 \(result.movedCount) 件"
             if result.duplicateCount > 0 { message += "，拦下 \(result.duplicateCount) 件重复" }
-            events.announce(message)
+            events.announce(
+                message,
+                outcome: .complete,
+                category: FileCategory(rawValue: result.categoryNames.first ?? "")
+            )
         } else if result.duplicateCount > 0 {
-            events.announce("巡查发现 \(result.duplicateCount) 件重复文件，已留在原处")
+            events.announce("巡查发现 \(result.duplicateCount) 件重复文件，已留在原处", outcome: .complete)
         } else if let failure = result.failures.first {
-            events.announce("巡查未完成：\(failure)")
+            events.announce("巡查未完成：\(failure)", outcome: .failure)
         }
     }
 

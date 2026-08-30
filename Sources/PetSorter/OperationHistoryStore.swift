@@ -9,6 +9,10 @@ struct SortOperation: Codable, Identifiable {
     let duplicateCount: Int
     let duplicateBytes: Int64
     let failureCount: Int
+    let duplicateFileNames: [String]
+    let failureMessages: [String]
+    let sourceTitle: String
+    let sourceURL: String
 
     /// 创建新的操作记录及其重复、失败统计。
     init(
@@ -18,7 +22,11 @@ struct SortOperation: Codable, Identifiable {
         items: [FileMoveRecord],
         duplicateCount: Int,
         duplicateBytes: Int64,
-        failureCount: Int
+        failureCount: Int,
+        duplicateFileNames: [String] = [],
+        failureMessages: [String] = [],
+        sourceTitle: String = "",
+        sourceURL: String = ""
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -27,10 +35,16 @@ struct SortOperation: Codable, Identifiable {
         self.duplicateCount = duplicateCount
         self.duplicateBytes = duplicateBytes
         self.failureCount = failureCount
+        self.duplicateFileNames = duplicateFileNames
+        self.failureMessages = failureMessages
+        self.sourceTitle = sourceTitle
+        self.sourceURL = sourceURL
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, createdAt, source, items, duplicateCount, duplicateBytes, failureCount
+        case duplicateFileNames, failureMessages
+        case sourceTitle, sourceURL
     }
 
     /// 解码历史记录，并为旧版本缺失的统计字段提供零值。
@@ -43,6 +57,10 @@ struct SortOperation: Codable, Identifiable {
         duplicateCount = try values.decodeIfPresent(Int.self, forKey: .duplicateCount) ?? 0
         duplicateBytes = try values.decodeIfPresent(Int64.self, forKey: .duplicateBytes) ?? 0
         failureCount = try values.decodeIfPresent(Int.self, forKey: .failureCount) ?? 0
+        duplicateFileNames = try values.decodeIfPresent([String].self, forKey: .duplicateFileNames) ?? []
+        failureMessages = try values.decodeIfPresent([String].self, forKey: .failureMessages) ?? []
+        sourceTitle = try values.decodeIfPresent(String.self, forKey: .sourceTitle) ?? ""
+        sourceURL = try values.decodeIfPresent(String.self, forKey: .sourceURL) ?? ""
     }
 }
 
@@ -57,8 +75,9 @@ struct DailySortSummary {
 }
 
 @MainActor
-/// 持久化最近 100 次整理操作，并提供今日战报和一键撤回能力。
+/// 持久化最近三天的整理操作，并提供今日战报和一键撤回能力。
 final class OperationHistoryStore: ObservableObject {
+    static let retentionDays = 3
     @Published private(set) var operations: [SortOperation] = []
 
     private let historyURL: URL
@@ -70,6 +89,7 @@ final class OperationHistoryStore: ObservableObject {
         let directory = support.appendingPathComponent("二爷收着", isDirectory: true)
         historyURL = directory.appendingPathComponent("history.json")
         load()
+        pruneExpiredHistory()
     }
 
     /// 返回最新一次操作，不保证其中一定有可撤回文件。
@@ -93,8 +113,43 @@ final class OperationHistoryStore: ObservableObject {
         )
     }
 
+    /// 计算当前连续整理天数；当天尚未行动时允许从昨天继续显示未中断记录。
+    var currentStreak: Int {
+        let calendar = Calendar.current
+        let activeDays = Set(
+            operations
+                .filter { !$0.items.isEmpty }
+                .map { calendar.startOfDay(for: $0.createdAt) }
+        )
+        guard !activeDays.isEmpty else { return 0 }
+        let today = calendar.startOfDay(for: Date())
+        let yesterday = calendar.date(byAdding: .day, value: -1, to: today) ?? today
+        var cursor: Date
+        if activeDays.contains(today) {
+            cursor = today
+        } else if activeDays.contains(yesterday) {
+            cursor = yesterday
+        } else {
+            return 0
+        }
+
+        var streak = 0
+        while activeDays.contains(cursor) {
+            streak += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: cursor) else { break }
+            cursor = previous
+        }
+        return streak
+    }
+
     /// 记录一次整理结果；纯失败或纯重复任务同样会进入战报。
-    func record(_ result: SortResult, source: String, discardsOnUndo: Bool = false) {
+    func record(
+        _ result: SortResult,
+        source: String,
+        discardsOnUndo: Bool = false,
+        sourceTitle: String = "",
+        sourceURL: String = ""
+    ) {
         guard !result.movedItems.isEmpty || result.duplicateCount > 0 || !result.failures.isEmpty else { return }
         // 网页投递的源文件位于临时目录，转换为“撤回即删除”的导入记录。
         let items = discardsOnUndo
@@ -108,12 +163,37 @@ final class OperationHistoryStore: ObservableObject {
                 items: items,
                 duplicateCount: result.duplicateCount,
                 duplicateBytes: result.duplicateBytes,
-                failureCount: result.failures.count
+                failureCount: result.failures.count,
+                duplicateFileNames: result.duplicateFiles,
+                failureMessages: result.failures,
+                sourceTitle: sourceTitle,
+                sourceURL: sourceURL
             ),
             at: 0
         )
+        removeExpiredOperations()
         operations = Array(operations.prefix(100))
         save()
+    }
+
+    /// 记录发生在下载或参数校验阶段的失败，避免未进入分类引擎的请求在历史中消失。
+    func recordFailure(
+        _ message: String,
+        source: String,
+        sourceTitle: String = "",
+        sourceURL: String = ""
+    ) {
+        record(
+            SortResult(
+                movedItems: [],
+                failures: [message],
+                duplicateFiles: [],
+                duplicateBytes: 0
+            ),
+            source: source,
+            sourceTitle: sourceTitle,
+            sourceURL: sourceURL
+        )
     }
 
     @discardableResult
@@ -140,6 +220,22 @@ final class OperationHistoryStore: ObservableObject {
         operations = decoded
     }
 
+    /// 只保留最近三天的收纳记录，启动时将过期数据同步从磁盘移除。
+    func pruneExpiredHistory() {
+        let previousCount = operations.count
+        removeExpiredOperations()
+        if operations.count != previousCount { save() }
+    }
+
+    private func removeExpiredOperations(referenceDate: Date = Date()) {
+        let cutoff = Calendar.current.date(
+            byAdding: .day,
+            value: -Self.retentionDays,
+            to: referenceDate
+        ) ?? referenceDate.addingTimeInterval(-3 * 24 * 60 * 60)
+        operations.removeAll { $0.createdAt < cutoff }
+    }
+
     /// 原子写入历史 JSON，避免应用中断导致半份记录。
     private func save() {
         do {
@@ -161,10 +257,18 @@ final class OperationHistoryStore: ObservableObject {
 final class PetEventStore: ObservableObject {
     @Published private(set) var sequence = 0
     private(set) var message = ""
+    private(set) var outcome: PetEventOutcome = .neutral
+    private(set) var category: FileCategory?
 
     /// 发布新消息并递增序号，确保相同文字也能再次触发界面更新。
-    func announce(_ message: String) {
+    func announce(
+        _ message: String,
+        outcome: PetEventOutcome = .complete,
+        category: FileCategory? = nil
+    ) {
         self.message = message
+        self.outcome = outcome
+        self.category = category
         sequence += 1
     }
 }

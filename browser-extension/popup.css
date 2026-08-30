@@ -1,0 +1,55 @@
+:root {
+  color-scheme: light dark;
+  --paper: #f2efe6;
+  --surface: #fbfaf5;
+  --ink: #17201b;
+  --muted: #68716b;
+  --line: #c9cdc5;
+  --green: #17543a;
+  --green-strong: #0d422c;
+  --seal: #b84335;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+* { box-sizing: border-box; }
+body { width: 390px; min-height: 590px; margin: 0; color: var(--ink); background: var(--paper); }
+button, input, select { font: inherit; }
+button { color: inherit; }
+main { padding: 20px; }
+header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+.brand { margin: 0 0 3px; color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .16em; }
+h1 { margin: 0; font-size: 26px; line-height: 1.1; letter-spacing: -.04em; }
+.inbox-button { min-height: 34px; padding: 0 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; font-size: 12px; cursor: pointer; }
+.inbox-button strong { display: inline-grid; min-width: 20px; height: 20px; margin-left: 4px; place-items: center; border-radius: 5px; color: var(--surface); background: var(--seal); font-size: 11px; }
+.page-card { min-height: 116px; display: grid; grid-template-columns: minmax(0, 1fr) 104px; gap: 14px; overflow: hidden; padding: 15px; border-radius: 12px; color: #f3f4ef; background: var(--green-strong); }
+.page-card:has(img[hidden]) { grid-template-columns: 1fr; }
+.page-copy { min-width: 0; align-self: end; }
+#page-domain { margin: 0 0 7px; overflow: hidden; color: #b8c9bf; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+h2 { display: -webkit-box; margin: 0 0 7px; overflow: hidden; font-size: 17px; line-height: 1.25; letter-spacing: -.02em; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+#page-meta { margin: 0; color: #b8c9bf; font-size: 11px; }
+#hero-image { width: 104px; height: 86px; align-self: center; border-radius: 8px; object-fit: cover; }
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.action { min-height: 67px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; text-align: left; background: color-mix(in srgb, var(--surface) 88%, transparent); cursor: pointer; transition: border-color .16s ease, transform .16s ease, background .16s ease; }
+.action:hover { border-color: var(--green); background: var(--surface); }
+.action:active { transform: translateY(1px); }
+.action.primary { color: #f3f4ef; border-color: var(--green); background: var(--green); }
+.action.primary:hover { background: var(--green-strong); }
+.action.wide { grid-column: 1 / -1; min-height: 58px; }
+.action span, .action small { display: block; }
+.action span { font-size: 13px; font-weight: 750; }
+.action small { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.action.primary small { color: #c6d5cc; }
+.routing { display: grid; grid-template-columns: 68px 1fr; gap: 8px 10px; align-items: center; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.routing label { color: var(--muted); font-size: 11px; font-weight: 700; }
+.routing input, .routing select { width: 100%; height: 34px; border: 1px solid var(--line); border-radius: 8px; padding: 0 9px; color: var(--ink); background: var(--surface); outline: none; }
+.routing input:focus, .routing select:focus { border-color: var(--green); box-shadow: 0 0 0 2px color-mix(in srgb, var(--green) 20%, transparent); }
+.routing input::placeholder { color: #788079; }
+.status { min-height: 18px; margin: 11px 0 0; color: var(--muted); font-size: 11px; text-align: center; }
+.status.success { color: var(--green); font-weight: 700; }
+.status.error { color: var(--seal); font-weight: 700; }
+button:focus-visible { outline: 2px solid var(--seal); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: .46; }
+@media (prefers-color-scheme: dark) {
+  :root { --paper: #151a17; --surface: #202722; --ink: #edf0ea; --muted: #a9b1aa; --line: #404943; --green: #347957; --green-strong: #123f2b; }
+  .page-card { background: #0d3524; }
+}
+@media (prefers-reduced-motion: reduce) { .action { transition: none; } }

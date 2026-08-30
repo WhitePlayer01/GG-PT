@@ -91,7 +91,7 @@ enum FileCategory: String, CaseIterable, Identifiable {
     /// 返回当前分类可以识别的全部小写扩展名。
     var extensions: Set<String> {
         switch self {
-        case .images: return ["jpg", "jpeg", "png", "gif", "webp", "heic", "tiff", "bmp", "svg", "raw"]
+        case .images: return ["jpg", "jpeg", "jfif", "png", "gif", "webp", "avif", "heic", "tiff", "bmp", "svg", "raw"]
         case .documents: return ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "pages", "numbers", "key", "txt", "md", "rtf", "csv", "webloc"]
         case .videos: return ["mp4", "mov", "mkv", "avi", "webm", "m4v"]
         case .audio: return ["mp3", "m4a", "wav", "aac", "flac", "ogg"]
@@ -142,6 +142,34 @@ final class SettingsStore: ObservableObject {
     @Published var showsSettingsButton: Bool {
         didSet { defaults.set(showsSettingsButton, forKey: "showsSettingsButton") }
     }
+    @Published var petSkin: PetSkin {
+        didSet { defaults.set(petSkin.rawValue, forKey: "petSkin") }
+    }
+    @Published var petWeapon: PetWeapon {
+        didSet { defaults.set(petWeapon.rawValue, forKey: "petWeapon") }
+    }
+    @Published var petTheme: PetTheme {
+        didSet { defaults.set(petTheme.rawValue, forKey: "petTheme") }
+    }
+    @Published var soundEffectsEnabled: Bool {
+        didSet { defaults.set(soundEffectsEnabled, forKey: "soundEffectsEnabled") }
+    }
+    @Published var quietMode: Bool {
+        didSet { defaults.set(quietMode, forKey: "quietMode") }
+    }
+    @Published var seasonalEffectsEnabled: Bool {
+        didSet { defaults.set(seasonalEffectsEnabled, forKey: "seasonalEffectsEnabled") }
+    }
+    @Published var snapToScreenEdges: Bool {
+        didSet { defaults.set(snapToScreenEdges, forKey: "snapToScreenEdges") }
+    }
+    @Published var showsDailyBadge: Bool {
+        didSet { defaults.set(showsDailyBadge, forKey: "showsDailyBadge") }
+    }
+    // 使用屏幕标识和可见区域归一化坐标保存位置，显示器分辨率变化后仍可恢复。
+    private(set) var savedPetScreenID: String
+    private(set) var savedPetPositionX: Double
+    private(set) var savedPetPositionY: Double
     // 拖动滑杆时实时发布桌宠窗口透明度，结束拖动后再统一持久化。
     @Published var petOpacity: Double
 
@@ -178,6 +206,17 @@ final class SettingsStore: ObservableObject {
             rawValue: UserDefaults.standard.string(forKey: "smartNamingStyle") ?? ""
         ) ?? .original
         showsSettingsButton = UserDefaults.standard.object(forKey: "showsSettingsButton") as? Bool ?? true
+        petSkin = PetSkin(rawValue: UserDefaults.standard.string(forKey: "petSkin") ?? "") ?? .classic
+        petWeapon = PetWeapon(rawValue: UserDefaults.standard.string(forKey: "petWeapon") ?? "") ?? .greenDragon
+        petTheme = PetTheme(rawValue: UserDefaults.standard.string(forKey: "petTheme") ?? "") ?? .automatic
+        soundEffectsEnabled = UserDefaults.standard.object(forKey: "soundEffectsEnabled") as? Bool ?? true
+        quietMode = UserDefaults.standard.bool(forKey: "quietMode")
+        seasonalEffectsEnabled = UserDefaults.standard.object(forKey: "seasonalEffectsEnabled") as? Bool ?? true
+        snapToScreenEdges = UserDefaults.standard.object(forKey: "snapToScreenEdges") as? Bool ?? true
+        showsDailyBadge = UserDefaults.standard.object(forKey: "showsDailyBadge") as? Bool ?? true
+        savedPetScreenID = UserDefaults.standard.string(forKey: "savedPetScreenID") ?? ""
+        savedPetPositionX = UserDefaults.standard.object(forKey: "savedPetPositionX") as? Double ?? -1
+        savedPetPositionY = UserDefaults.standard.object(forKey: "savedPetPositionY") as? Double ?? -1
         let savedPetOpacity = UserDefaults.standard.double(forKey: "petOpacity")
         petOpacity = savedPetOpacity == 0 ? 1.0 : min(max(savedPetOpacity, 0.35), 1.0)
     }
@@ -262,6 +301,16 @@ final class SettingsStore: ObservableObject {
     func persistPetOpacity() {
         petOpacity = min(max(petOpacity, 0.35), 1.0)
         defaults.set(petOpacity, forKey: "petOpacity")
+    }
+
+    /// 保存桌宠在当前显示器可见区域中的相对中心位置。
+    func savePetPosition(screenID: String, normalizedX: Double, normalizedY: Double) {
+        savedPetScreenID = screenID
+        savedPetPositionX = min(max(normalizedX, 0), 1)
+        savedPetPositionY = min(max(normalizedY, 0), 1)
+        defaults.set(savedPetScreenID, forKey: "savedPetScreenID")
+        defaults.set(savedPetPositionX, forKey: "savedPetPositionX")
+        defaults.set(savedPetPositionY, forKey: "savedPetPositionY")
     }
 
     /// 将全部军令编码为 JSON 并保存到用户偏好设置。

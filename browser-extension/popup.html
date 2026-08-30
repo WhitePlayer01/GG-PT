@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>云长卫</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <p class="brand">云长卫</p>
+        <h1>网页收纳</h1>
+      </div>
+      <button class="inbox-button" id="open-inbox" type="button" aria-label="打开待收纳箱">
+        待收纳箱 <strong id="inbox-count">0</strong>
+      </button>
+    </header>
+
+    <section class="page-card" aria-live="polite">
+      <div class="page-copy">
+        <p id="page-domain">正在读取网页</p>
+        <h2 id="page-title">请稍候</h2>
+        <p id="page-meta">扫描正文与图片</p>
+      </div>
+      <img id="hero-image" alt="当前网页的主要图片" hidden>
+    </section>
+
+    <section class="actions" aria-label="收纳操作">
+      <button class="action primary" data-action="image" type="button">
+        <span>当前图片</span><small>交给二爷并自动分类</small>
+      </button>
+      <button class="action" data-action="markdown" type="button">
+        <span>正文 Markdown</span><small>保留标题、段落与来源</small>
+      </button>
+      <button class="action" data-action="pdf" type="button">
+        <span>保存为 PDF</span><small>打开系统打印面板</small>
+      </button>
+      <button class="action" data-action="link" type="button">
+        <span>链接待收纳</span><small>稍后统一处理</small>
+      </button>
+      <button class="action wide" data-action="images" type="button">
+        <span>收集页面全部图片</span><small id="image-count">尚未发现图片</small>
+      </button>
+    </section>
+
+    <section class="routing">
+      <label for="destination">目标分类</label>
+      <select id="destination">
+        <option value="">自动分类</option>
+        <option>待整理</option><option>图片</option><option>文档</option>
+        <option>视频</option><option>音频</option><option>素材库</option>
+      </select>
+      <label for="tags">标签</label>
+      <input id="tags" type="text" maxlength="100" placeholder="三国、角色设计">
+    </section>
+
+    <p class="status" id="status" role="status">选择一个动作开始收纳</p>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -31,6 +31,8 @@ cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-idle.png" "$APP_DIR/Content
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-receiving.png" "$APP_DIR/Contents/Resources/guan-yu-receiving.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-failure.png" "$APP_DIR/Contents/Resources/guan-yu-failure.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-complete.png" "$APP_DIR/Contents/Resources/guan-yu-complete.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-skin-crimson.png" "$APP_DIR/Contents/Resources/guan-yu-skin-crimson.png"
+cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-skin-midnight.png" "$APP_DIR/Contents/Resources/guan-yu-skin-midnight.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
 cp -R "$PROJECT_DIR/Sources/PetSorter/Resources/sword-animation" "$APP_DIR/Contents/Resources/"
 # 写入 Info.plist，并进行本机临时签名以便直接运行和验证。
