@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.next/
+.wrangler/
+.vinext/
+.env*
+*.tgz
+.DS_Store
+/assets/
+/downloads/
