@@ -131,7 +131,9 @@ final class SettingsStore: ObservableObject {
     }
     @Published var sortingRules: [SortingRule] { didSet { saveRules() } }
     @Published var detectDuplicates: Bool { didSet { defaults.set(detectDuplicates, forKey: "detectDuplicates") } }
-    @Published var organizeByYearMonth: Bool { didSet { defaults.set(organizeByYearMonth, forKey: "organizeByYearMonth") } }
+    @Published var organizeByMonthFolder: Bool {
+        didSet { defaults.set(organizeByMonthFolder, forKey: "organizeByMonthFolder") }
+    }
     @Published var monitorDesktop: Bool { didSet { defaults.set(monitorDesktop, forKey: "monitorDesktop") } }
     @Published var monitorDownloads: Bool { didSet { defaults.set(monitorDownloads, forKey: "monitorDownloads") } }
     @Published var monitorIntervalMinutes: Int { didSet { defaults.set(monitorIntervalMinutes, forKey: "monitorIntervalMinutes") } }
@@ -196,7 +198,10 @@ final class SettingsStore: ObservableObject {
             sortingRules = []
         }
         detectDuplicates = UserDefaults.standard.object(forKey: "detectDuplicates") as? Bool ?? true
-        organizeByYearMonth = UserDefaults.standard.bool(forKey: "organizeByYearMonth")
+        // 新版改为单层年月目录；升级时沿用此前相关目录开关的状态。
+        organizeByMonthFolder = UserDefaults.standard.object(forKey: "organizeByMonthFolder") as? Bool
+            ?? UserDefaults.standard.object(forKey: "organizeByDateFolder") as? Bool
+            ?? UserDefaults.standard.bool(forKey: "organizeByYearMonth")
         monitorDesktop = UserDefaults.standard.bool(forKey: "monitorDesktop")
         monitorDownloads = UserDefaults.standard.bool(forKey: "monitorDownloads")
         let savedInterval = UserDefaults.standard.integer(forKey: "monitorIntervalMinutes")

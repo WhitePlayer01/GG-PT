@@ -11,7 +11,7 @@ LEGACY_APP_DIR="$PROJECT_DIR/dist/二爷收着.app"
 
 # 使用与当前命令行工具匹配的 SDK 构建 release 可执行文件。
 cd "$PROJECT_DIR"
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk \
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
 CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/ModuleCache" \
 swift build -c release --disable-sandbox --scratch-path .build
 

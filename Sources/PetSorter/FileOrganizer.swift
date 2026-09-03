@@ -71,6 +71,8 @@ enum FileOrganizer {
         var failures: [String] = []
         var duplicateFiles: [String] = []
         var duplicateBytes: Int64 = 0
+        // 同一批文件统一进入本次整理月份的单层年月目录。
+        let monthFolderName = settings.organizeByMonthFolder ? currentMonthFolderName() : nil
 
         for source in urls {
             // 自定义军令优先于内置八分类，首个命中的规则立即生效。
@@ -81,11 +83,8 @@ enum FileOrganizer {
                 ? (rule.map { safeRelativeFolder($0.destinationFolder) } ?? settings.subfolder(for: category))
                 : safeRelativeFolder(requestedFolder)
             var destinationFolder = base.appendingPathComponent(folderName, isDirectory: true)
-            if settings.organizeByYearMonth {
-                // 年月目录采用文件自身日期，避免旧素材全部落入导入当天。
-                let parts = yearMonthParts(for: source)
-                destinationFolder.appendPathComponent(parts.year, isDirectory: true)
-                destinationFolder.appendPathComponent(parts.month, isDirectory: true)
+            if let monthFolderName {
+                destinationFolder.appendPathComponent(monthFolderName, isDirectory: true)
             }
 
             do {
@@ -132,10 +131,8 @@ enum FileOrganizer {
         let folderName = rule.map { safeRelativeFolder($0.destinationFolder) } ?? settings.subfolder(for: category)
         var destination = URL(fileURLWithPath: settings.baseDirectory, isDirectory: true)
             .appendingPathComponent(folderName, isDirectory: true)
-        if settings.organizeByYearMonth {
-            let parts = yearMonthParts(for: source)
-            destination.appendPathComponent(parts.year, isDirectory: true)
-            destination.appendPathComponent(parts.month, isDirectory: true)
+        if settings.organizeByMonthFolder {
+            destination.appendPathComponent(currentMonthFolderName(), isDirectory: true)
         }
         return SortPreview(
             matchedRuleName: rule?.name,
@@ -257,15 +254,13 @@ enum FileOrganizer {
         return parts.isEmpty ? "自定义" : parts.joined(separator: "/")
     }
 
-    /// 从文件修改日期或创建日期提取四位年份和两位月份。
-    private static func yearMonthParts(for url: URL) -> (year: String, month: String) {
-        let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .creationDateKey])
-        let date = values?.contentModificationDate ?? values?.creationDate ?? Date()
-        let calendar = Calendar(identifier: .gregorian)
-        return (
-            String(format: "%04d", calendar.component(.year, from: date)),
-            String(format: "%02d", calendar.component(.month, from: date))
-        )
+    /// 以本机当前年月生成一个单层目录名，例如 `2026-08`。
+    private static func currentMonthFolderName() -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: Date())
     }
 
     /// 先比较文件大小，再用 SHA-256 判断目标目录中是否存在内容相同文件。

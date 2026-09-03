@@ -80,6 +80,8 @@ final class FolderPatrolService: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.patrolNow(announcesEmpty: false) }
         }
+        // 允许系统合并后台唤醒，降低长期驻留时的能耗。
+        timer?.tolerance = min(60, interval * 0.1)
     }
 
     /// 返回本次允许自动移动的安全候选文件列表。

@@ -199,7 +199,7 @@ struct SettingsView: View {
                     Toggle("巡查桌面", isOn: $settings.monitorDesktop)
                     Toggle("巡查下载目录", isOn: $settings.monitorDownloads)
                     HStack {
-                        Toggle("按文件日期建立 年/月 目录", isOn: $settings.organizeByYearMonth)
+                        Toggle("按年月建立单层目录", isOn: $settings.organizeByMonthFolder)
                         Spacer()
                         Toggle("拦截内容重复的文件", isOn: $settings.detectDuplicates)
                     }
@@ -373,7 +373,7 @@ struct SettingsView: View {
                 VStack(spacing: 10) {
                     HStack {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("云长卫 \(UpdateService.currentVersion)")
+                            Text("云长卫 \(UpdateService.currentVersion)（构建 \(UpdateService.currentBuild)）")
                                 .fontWeight(.medium)
                             Text(updateStatusText)
                                 .font(.caption)
@@ -471,6 +471,12 @@ struct SettingsView: View {
             Spacer()
 
             VStack(alignment: .leading, spacing: 5) {
+                Text("版本 \(UpdateService.currentVersion) · 构建 \(UpdateService.currentBuild)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                Divider()
+                    .padding(.vertical, 3)
                 Text("收纳位置")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)

@@ -59,6 +59,11 @@ final class UpdateService: ObservableObject {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "开发版"
     }
 
+    /// 从应用 Info.plist 获取内部构建号，便于区分同一版本的不同安装包。
+    static var currentBuild: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "本地"
+    }
+
     private let latestReleaseURL = URL(string: "https://api.github.com/repos/WhitePlayer01/GG-PT/releases/latest")!
 
     /// 请求最新 GitHub Release，并比较远端与本地版本号。

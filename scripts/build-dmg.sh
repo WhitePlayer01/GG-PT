@@ -7,7 +7,16 @@ APP_NAME="云长卫"
 DIST_DIR="$PROJECT_DIR/dist"
 APP_PATH="$DIST_DIR/$APP_NAME.app"
 ICON_PATH="$PROJECT_DIR/Sources/PetSorter/Resources/AppIcon.icns"
-VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PROJECT_DIR/AppInfo.plist")
+PLIST_PATH="$PROJECT_DIR/AppInfo.plist"
+CURRENT_VERSION=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$PLIST_PATH")
+CURRENT_BUILD=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$PLIST_PATH")
+VERSION_PARTS=("${(@s:.:)CURRENT_VERSION}")
+if [[ ${#VERSION_PARTS[@]} -ne 3 ]] || [[ "$CURRENT_VERSION" != <->.<->.<-> ]] || [[ "$CURRENT_BUILD" != <-> ]]; then
+    echo "无法自动递增版本：当前版本必须为 x.y.z，构建号必须为整数。" >&2
+    exit 1
+fi
+VERSION="${VERSION_PARTS[1]}.${VERSION_PARTS[2]}.$((VERSION_PARTS[3] + 1))"
+BUILD_NUMBER="$((CURRENT_BUILD + 1))"
 ARCHITECTURE="$(uname -m)"
 DMG_PATH="$DIST_DIR/$APP_NAME-$VERSION-$ARCHITECTURE.dmg"
 RW_DMG_PATH="$DIST_DIR/.$APP_NAME-$VERSION-$ARCHITECTURE.rw.dmg"
@@ -15,7 +24,10 @@ RW_DMG_PATH="$DIST_DIR/.$APP_NAME-$VERSION-$ARCHITECTURE.rw.dmg"
 mkdir -p "$DIST_DIR"
 STAGING_DIR="$(mktemp -d "$DIST_DIR/.dmg-staging.XXXXXX")"
 MOUNT_DIR="$(mktemp -d "/tmp/yunchangwei-dmg.XXXXXX")"
+PLIST_BACKUP="$(mktemp "/tmp/yunchangwei-info.XXXXXX")"
+cp "$PLIST_PATH" "$PLIST_BACKUP"
 IS_MOUNTED=0
+PACKAGING_SUCCEEDED=0
 
 cleanup() {
     if [[ $IS_MOUNTED -eq 1 ]]; then
@@ -24,8 +36,18 @@ cleanup() {
     rm -rf "$STAGING_DIR"
     rmdir "$MOUNT_DIR" >/dev/null 2>&1 || true
     rm -f "$RW_DMG_PATH"
+    if [[ $PACKAGING_SUCCEEDED -ne 1 ]]; then
+        cp "$PLIST_BACKUP" "$PLIST_PATH"
+    fi
+    rm -f "$PLIST_BACKUP"
 }
 trap cleanup EXIT INT TERM
+
+echo "版本自动更新：$CURRENT_VERSION（构建 $CURRENT_BUILD）→ $VERSION（构建 $BUILD_NUMBER）"
+/usr/bin/sed -i '' \
+    -e "/<key>CFBundleShortVersionString<\\/key>/{n;s#<string>[^<]*</string>#<string>$VERSION</string>#;}" \
+    -e "/<key>CFBundleVersion<\\/key>/{n;s#<string>[^<]*</string>#<string>$BUILD_NUMBER</string>#;}" \
+    "$PLIST_PATH"
 
 echo "[1/4] 正在构建 $APP_NAME.app…"
 "$PROJECT_DIR/scripts/build-app.sh" >/dev/null
@@ -69,6 +91,7 @@ rm -f "$RW_DMG_PATH"
     xcrun Rez dmg-icon.r -append -o "$DMG_PATH"
 )
 xcrun SetFile -a C "$DMG_PATH"
+PACKAGING_SUCCEEDED=1
 
 echo
 echo "打包完成：$DMG_PATH"
