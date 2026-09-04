@@ -57,3 +57,9 @@ xcrun safari-web-extension-converter browser-extension --project-location safari
 - `handoff.css`：中转页品牌样式
 
 `manifest.json` 必须保持标准 JSON，JSON 语法不允许添加注释；各字段用途因此集中记录在本说明中。
+
+## 听歌记录
+
+重新加载扩展后，在面板开启“听歌记录”，刷新音乐网页，并在桌宠设置 → 听歌记录中开启自动记录。仅访问网易云音乐、QQ 音乐、Spotify、Apple Music、YouTube Music 音乐站点的媒体元数据。网页必须提供歌名、歌手和播放状态；不采集页面正文或声音。桌宠未运行时静默停止投递，不弹出网页唤起提示。关闭扩展开关后停止采样，桌宠最迟约 15 秒清除已失联的网页播放状态。
+
+可用 `node browser-extension/music-observer.test.cjs` 在项目根目录验证媒体信息读取与开关、站点过滤。实际站点支持程度仍需对应播放器播放验证。

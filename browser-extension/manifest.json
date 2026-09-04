@@ -2,15 +2,26 @@
   "manifest_version": 3,
   "name": "云长卫 · 网页投递",
   "description": "把网页、正文、图片和链接交给 Mac 上的云长卫，并保留完整来源。",
-  "version": "0.7.2",
+  "version": "0.8.0",
   "icons": {
     "16": "icons/icon-16.png",
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["activeTab", "contextMenus", "notifications", "scripting", "storage", "tabs"],
-  "host_permissions": ["http://*/*", "https://*/*", "http://127.0.0.1/*"],
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "notifications",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*",
+    "http://127.0.0.1/*"
+  ],
   "background": {
     "service_worker": "service-worker.js"
   },
@@ -24,5 +35,20 @@
       "128": "icons/icon-128.png"
     }
   },
-  "options_page": "inbox.html"
+  "options_page": "inbox.html",
+  "content_scripts": [
+    {
+      "matches": [
+        "https://music.163.com/*",
+        "https://y.qq.com/*",
+        "https://open.spotify.com/*",
+        "https://music.apple.com/*",
+        "https://music.youtube.com/*"
+      ],
+      "js": [
+        "music-observer.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

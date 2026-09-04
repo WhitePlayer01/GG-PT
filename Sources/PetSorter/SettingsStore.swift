@@ -134,6 +134,9 @@ final class SettingsStore: ObservableObject {
     @Published var organizeByMonthFolder: Bool {
         didSet { defaults.set(organizeByMonthFolder, forKey: "organizeByMonthFolder") }
     }
+    @Published var neteaseTrackingEnabled: Bool { didSet { defaults.set(neteaseTrackingEnabled, forKey: "neteaseTrackingEnabled") } }
+    @Published var musicListeningAppearanceEnabled: Bool { didSet { defaults.set(musicListeningAppearanceEnabled, forKey: "musicListeningAppearanceEnabled") } }
+    @Published var musicTrackingEnabled: Bool { didSet { defaults.set(musicTrackingEnabled, forKey: "musicTrackingEnabled") } }
     @Published var monitorDesktop: Bool { didSet { defaults.set(monitorDesktop, forKey: "monitorDesktop") } }
     @Published var monitorDownloads: Bool { didSet { defaults.set(monitorDownloads, forKey: "monitorDownloads") } }
     @Published var monitorIntervalMinutes: Int { didSet { defaults.set(monitorIntervalMinutes, forKey: "monitorIntervalMinutes") } }
@@ -202,6 +205,9 @@ final class SettingsStore: ObservableObject {
         organizeByMonthFolder = UserDefaults.standard.object(forKey: "organizeByMonthFolder") as? Bool
             ?? UserDefaults.standard.object(forKey: "organizeByDateFolder") as? Bool
             ?? UserDefaults.standard.bool(forKey: "organizeByYearMonth")
+        neteaseTrackingEnabled = UserDefaults.standard.bool(forKey: "neteaseTrackingEnabled")
+        musicListeningAppearanceEnabled = UserDefaults.standard.object(forKey: "musicListeningAppearanceEnabled") as? Bool ?? true
+        musicTrackingEnabled = UserDefaults.standard.bool(forKey: "musicTrackingEnabled")
         monitorDesktop = UserDefaults.standard.bool(forKey: "monitorDesktop")
         monitorDownloads = UserDefaults.standard.bool(forKey: "monitorDownloads")
         let savedInterval = UserDefaults.standard.integer(forKey: "monitorIntervalMinutes")

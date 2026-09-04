@@ -16,6 +16,7 @@ struct PetView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var history: OperationHistoryStore
     @ObservedObject var events: PetEventStore
+    @ObservedObject var music: MusicListeningService
     let openSettings: () -> Void
     let patrolNow: () -> Void
 
@@ -48,7 +49,7 @@ struct PetView: View {
                     .accessibilityLabel(moment.name)
             }
 
-            WeaponAura(weapon: settings.petWeapon)
+            if !isListening { WeaponAura(weapon: settings.petWeapon) }
 
             if isTargeted {
                 // 文件悬停时显示金色接收区域，提示当前可以松手投放。
@@ -73,7 +74,9 @@ struct PetView: View {
             }
 
             Group {
-                if isPlayingSwordAnimation {
+                if isListening {
+                    ListeningPetArtwork(quiet: settings.quietMode)
+                } else if isPlayingSwordAnimation {
                     SwordAnimationArtwork(frameIndex: swordFrameIndex, fallbackSkin: settings.petSkin)
                 } else {
                     StatePetArtwork(state: isTargeted ? .receiving : visualState, skin: settings.petSkin)
@@ -82,9 +85,10 @@ struct PetView: View {
                 .scaledToFit()
                 .frame(width: 245, height: 275)
                 .scaleEffect(characterScale, anchor: .bottom)
-                .rotationEffect(.degrees(reactionRotation), anchor: .bottom)
-                .offset(x: reactionOffset, y: characterYOffset)
-                .shadow(color: .black.opacity(0.18), radius: 5, y: 4)
+                .rotationEffect(.degrees(isListening ? 0 : reactionRotation), anchor: .bottom)
+                .offset(x: isListening ? 0 : reactionOffset, y: characterYOffset)
+                // 听歌帧已有地面阴影，避免每帧对整个人物重新做模糊合成。
+                .shadow(color: .black.opacity(isListening ? 0 : 0.18), radius: isListening ? 0 : 5, y: 4)
 
             VStack {
                 HStack {
@@ -103,7 +107,20 @@ struct PetView: View {
                     }
                 }
                 Spacer()
-                if messageVisible {
+                if isListening && !isTargeted && (visualState == .idle || !messageVisible) {
+                    VStack(spacing: 2) {
+                        Label("将军正在听", systemImage: "headphones")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.75))
+                        Text(music.currentTrack?.title ?? "此曲甚妙")
+                            .font(.system(size: 12, weight: .semibold))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .background(messageBackground, in: Capsule())
+                    .frame(maxWidth: 240)
+                } else if messageVisible {
                     Text(message)
                         .font(.system(size: 13, weight: .semibold, design: .rounded))
                         .foregroundStyle(.white)
@@ -117,7 +134,7 @@ struct PetView: View {
             }
             .padding(10)
 
-            if settings.showsDailyBadge, !messageVisible {
+            if settings.showsDailyBadge, !messageVisible, !isListening {
                 VStack {
                     Spacer()
                     HStack {
@@ -146,6 +163,10 @@ struct PetView: View {
                 Text("\(moment.name) · \(moment.greeting)")
             }
             Divider()
+            if let track = music.currentTrack {
+                Text("正在听：\(track.title) · \(track.artist)")
+            }
+            Toggle("自动记录听歌", isOn: $settings.musicTrackingEnabled)
             Button("收纳设置…", action: openSettings)
             Button("打开收纳箱", action: settings.revealBaseDirectory)
             Button("立即巡查桌面与下载", action: patrolNow)
@@ -186,6 +207,10 @@ struct PetView: View {
         }
     }
 
+    private var isListening: Bool {
+        music.isPlaying && settings.musicListeningAppearanceEnabled
+    }
+
     private var effectiveTheme: PetTheme {
         guard settings.petTheme == .automatic else { return settings.petTheme }
         if SeasonalMoment.current() != nil, settings.seasonalEffectsEnabled { return .festive }
@@ -210,6 +235,7 @@ struct PetView: View {
 
     /// 不同状态共用轻量位移动画，避免桌面常驻角色产生过强干扰。
     private var characterYOffset: CGFloat {
+        if isListening { return 0 }
         if isTargeted {
             let lift: CGFloat = receivingVariation == 1 ? -4 : 0
             return 12 + lift
@@ -223,6 +249,7 @@ struct PetView: View {
     }
 
     private var characterScale: CGFloat {
+        if isListening { return 1 }
         let ambientScale: CGFloat
         if isTargeted {
             let catchScale: CGFloat = receivingVariation == 2 ? 1.018 : 1
@@ -436,24 +463,13 @@ struct PetView: View {
 
 /// 从应用资源或开发目录读取四态桌宠立绘。
 private struct StatePetArtwork: View {
-    private static let cache: NSCache<NSString, NSImage> = {
-        let cache = NSCache<NSString, NSImage>()
-        cache.countLimit = 12
-        return cache
-    }()
-
     private let artwork: NSImage?
 
     /// 优先从打包后的 Bundle 读取资源，开发运行时回退到源码目录。
     init(state: PetVisualState, skin: PetSkin) {
         let artworkName = skin == .classic ? state.artworkName : skin.idleArtworkName
-        let cacheKey = artworkName as NSString
-        if let cached = Self.cache.object(forKey: cacheKey) {
-            artwork = cached
-            return
-        }
         if let url = Bundle.main.url(forResource: artworkName, withExtension: "png") {
-            artwork = NSImage(contentsOf: url)
+            artwork = ArtworkCache.image(at: url)
         } else {
             let developmentURL = URL(fileURLWithPath: #filePath)
                 .deletingLastPathComponent()
@@ -461,9 +477,8 @@ private struct StatePetArtwork: View {
             let fallbackURL = developmentURL
                 .deletingLastPathComponent()
                 .appendingPathComponent("guan-yu-v2.png")
-            artwork = NSImage(contentsOf: developmentURL) ?? NSImage(contentsOf: fallbackURL)
+            artwork = ArtworkCache.image(at: developmentURL) ?? ArtworkCache.image(at: fallbackURL)
         }
-        if let artwork { Self.cache.setObject(artwork, forKey: cacheKey) }
     }
 
     /// 显示角色图片；资源缺失时显示醒目的错误占位图标。

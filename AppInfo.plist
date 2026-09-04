@@ -38,6 +38,8 @@
     <key>LSUIElement</key>
     <true/>
     <!-- 以桌宠辅助应用运行，不常驻 Dock。 -->
+    <key>NSAppleEventsUsageDescription</key>
+    <string>开启听歌记录后，读取播放器的歌名、歌手和播放状态，在本机保存听歌记录。</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

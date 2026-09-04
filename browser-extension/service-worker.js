@@ -231,3 +231,48 @@ chrome.runtime.onMessage.addListener(function (message, sender, sendResponse) {
     return true;
   }
 });
+
+const musicHosts = new Set(["music.163.com", "y.qq.com", "open.spotify.com", "music.apple.com", "music.youtube.com"]);
+const pendingMusicTabs = new Set();
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type !== "music-heartbeat") return;
+  const tabID = sender.tab?.id;
+  if (tabID == null || sender.frameId !== 0) return;
+  let host;
+  try { host = new URL(sender.url).hostname; } catch { return; }
+  if (!musicHosts.has(host) || pendingMusicTabs.has(tabID)) return;
+  pendingMusicTabs.add(tabID);
+  (async () => {
+    const stored = await chrome.storage.local.get({ musicTrackingEnabled: false });
+    if (!stored.musicTrackingEnabled) { sendResponse({ ok: false }); return; }
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tabID },
+      world: "MAIN",
+      func: () => {
+        const metadata = navigator.mediaSession?.metadata;
+        if (!metadata) return null;
+        const media = Array.from(document.querySelectorAll("audio, video")).find(item => !item.paused && !item.ended && !item.muted && item.volume > 0);
+        const playing = navigator.mediaSession.playbackState === "playing" ||
+          (navigator.mediaSession.playbackState !== "paused" && !!media);
+        return {
+          title: metadata.title.slice(0, 500), artist: metadata.artist.slice(0, 500),
+          album: metadata.album.slice(0, 500), playing: String(playing),
+          position: media && Number.isFinite(media.currentTime) ? String(media.currentTime) : "",
+          duration: media && Number.isFinite(media.duration) ? String(media.duration) : ""
+        };
+      }
+    });
+    const values = results[0]?.result;
+    if (!values) { sendResponse({ ok: false }); return; }
+    // 再查开关，避免异步读取期间关闭记录后仍投递。
+    if (!(await chrome.storage.local.get("musicTrackingEnabled")).musicTrackingEnabled) { sendResponse({ ok: false }); return; }
+    const response = await fetch("http://127.0.0.1:48726/music", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Yunchangwei-Request": "browser-extension-v1" },
+      body: JSON.stringify({ ...values, host, session: String(tabID) }),
+      signal: AbortSignal.timeout(3000)
+    });
+    sendResponse({ ok: response.ok });
+  })().catch(() => sendResponse({ ok: false })).finally(() => pendingMusicTabs.delete(tabID));
+  return true;
+});

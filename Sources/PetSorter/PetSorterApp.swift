@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let history = OperationHistoryStore()
     let events = PetEventStore()
     let updates = UpdateService()
+    lazy var music = MusicListeningService(settings: settings)
     lazy var patrol = FolderPatrolService(settings: settings, history: history, events: events)
     private var petWindow: NSWindow?
     private var settingsWindowController: SettingsWindowController?
@@ -42,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         startBrowserBridge()
         observeScreenChanges()
         patrol.start()
+        music.start()
         observeUpdates()
         if settings.hasCompletedOnboarding {
             scheduleAutomaticUpdateCheck()
@@ -62,7 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     /// App 运行时接受扩展直连，避免打开外部协议中转页。
     private func startBrowserBridge() {
-        let bridge = BrowserBridgeServer { [weak self] values, completion in
+        let bridge = BrowserBridgeServer(music: { [weak self] values in
+            self?.music.receiveBrowser(values) ?? .init(success: false, message: "云长卫未就绪")
+        }) { [weak self] values, completion in
             guard let self else {
                 completion(.init(success: false, message: "云长卫未就绪"))
                 return
@@ -151,6 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 settings: settings,
                 history: history,
                 events: events,
+                music: music,
                 openSettings: { [weak self] in self?.showSettings() },
                 patrolNow: { [weak self] in self?.patrol.patrolNow() }
             )
@@ -291,7 +296,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 settings: settings,
                 history: history,
                 updates: updates,
-                patrol: patrol
+                patrol: patrol,
+                music: music
             )
         }
         settingsWindowController?.showWindow(nil)
@@ -376,9 +382,10 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         settings: SettingsStore,
         history: OperationHistoryStore,
         updates: UpdateService,
-        patrol: FolderPatrolService
+        patrol: FolderPatrolService,
+        music: MusicListeningService
     ) {
-        let root = SettingsView(settings: settings, history: history, updates: updates, patrol: patrol)
+        let root = SettingsView(settings: settings, history: history, updates: updates, music: music, patrol: patrol)
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 920, height: 760),
             styleMask: [.titled, .closable, .miniaturizable],

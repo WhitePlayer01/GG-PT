@@ -12,11 +12,13 @@ final class BrowserBridgeServer {
     static let port: UInt16 = 48726
 
     private let queue = DispatchQueue(label: "com.local.PetSorter.browser-bridge")
+    private let music: ([String: String]) -> BrowserBridgeResponse
     private let collect: ([String: String], @escaping (BrowserBridgeResponse) -> Void) -> Void
     private var listener: NWListener?
 
-    init(collect: @escaping ([String: String], @escaping (BrowserBridgeResponse) -> Void) -> Void) {
+    init(music: @escaping ([String: String]) -> BrowserBridgeResponse, collect: @escaping ([String: String], @escaping (BrowserBridgeResponse) -> Void) -> Void) {
         self.collect = collect
+        self.music = music
     }
 
     func start() {
@@ -87,7 +89,8 @@ final class BrowserBridgeServer {
             }
         }
         let bodyStart = headerRange.upperBound
-        let expectedLength = Int(headers["content-length"] ?? "0") ?? 0
+        guard let expectedLength = Int(headers["content-length"] ?? "0"),
+              expectedLength >= 0, expectedLength <= 32 * 1024 * 1024 else { return nil }
         guard data.count >= bodyStart + expectedLength else { return nil }
         return Request(
             method: String(requestLine[0]),
@@ -98,7 +101,7 @@ final class BrowserBridgeServer {
     }
 
     private func handle(_ request: Request, over connection: NWConnection) {
-        guard request.method == "POST", request.path == "/collect" else {
+        guard request.method == "POST", ["/collect", "/music"].contains(request.path) else {
             send(.init(success: false, message: "未知请求"), status: 404, over: connection)
             return
         }
@@ -120,6 +123,11 @@ final class BrowserBridgeServer {
             }
         }
         DispatchQueue.main.async { [weak self] in
+            if request.path == "/music", let self {
+                let response = self.music(values)
+                self.send(response, status: response.success ? 200 : 422, over: connection)
+                return
+            }
             self?.collect(values) { response in
                 self?.send(response, status: response.success ? 200 : 422, over: connection)
             }

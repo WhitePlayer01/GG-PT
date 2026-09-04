@@ -98,3 +98,12 @@ initialize().catch(function (error) {
   setStatus(error.message, "error");
   buttons.forEach(function (button) { button.disabled = true; });
 });
+
+const musicToggle = document.getElementById("music-tracking");
+chrome.storage.local.get({ musicTrackingEnabled: false }).then(values => {
+  musicToggle.checked = values.musicTrackingEnabled;
+});
+musicToggle.addEventListener("change", async () => {
+  await chrome.storage.local.set({ musicTrackingEnabled: musicToggle.checked });
+  setStatus(musicToggle.checked ? "听歌记录已开启，请同时开启桌宠设置中的自动记录，并刷新音乐页面" : "网页听歌记录已关闭");
+});

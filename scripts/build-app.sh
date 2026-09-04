@@ -27,6 +27,9 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
 # 复制可执行文件、应用图标、四态桌宠立绘和兼容保留的逐帧动画资源。
 cp "$BUILD_DIR/PetSorter" "$APP_DIR/Contents/MacOS/PetSorter"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-v2.png" "$APP_DIR/Contents/Resources/guan-yu-v2.png"
+for variant in "" "-nod" "-beat" "-dance" "-zen"; do
+    cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-listening$variant.png" "$APP_DIR/Contents/Resources/guan-yu-listening$variant.png"
+done
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-idle.png" "$APP_DIR/Contents/Resources/guan-yu-idle.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-receiving.png" "$APP_DIR/Contents/Resources/guan-yu-receiving.png"
 cp "$PROJECT_DIR/Sources/PetSorter/Resources/guan-yu-failure.png" "$APP_DIR/Contents/Resources/guan-yu-failure.png"

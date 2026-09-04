@@ -1,13 +1,14 @@
 import SwiftUI
 import AppKit
 
-/// 设置页的六个任务导向分区。
+/// 设置页的七个任务导向分区。
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "常规"
     case automation = "自动化"
     case rules = "高级军令"
     case report = "战报"
     case history = "收纳记录"
+    case music = "听歌记录"
     case updates = "版本更新"
 
     var id: String { rawValue }
@@ -19,6 +20,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .rules: return "list.bullet.rectangle.portrait"
         case .report: return "chart.bar.xaxis"
         case .history: return "clock.arrow.circlepath"
+        case .music: return "music.note.list"
         case .updates: return "arrow.down.app"
         }
     }
@@ -30,6 +32,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
         case .rules: return "用来源、类型、大小和时间定义精确军令"
         case .report: return "查看今日行动和最近一次可撤回记录"
         case .history: return "查看最近三天的收纳结果与文件去向"
+        case .music: return "记住听过的歌，为后续推荐积累偏好"
         case .updates: return "管理版本检查与应用下载"
         }
     }
@@ -40,6 +43,7 @@ struct SettingsView: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var history: OperationHistoryStore
     @ObservedObject var updates: UpdateService
+    @ObservedObject var music: MusicListeningService
     @ObservedObject var patrol: FolderPatrolService
     @State private var rulePreviewText = ""
     @State private var selectedSection: SettingsSection = .general
@@ -61,135 +65,7 @@ struct SettingsView: View {
             detailHeader
 
             if selectedSection == .general {
-            GroupBox("总收纳位置") {
-                // 路径使用中间省略，长目录仍能保留开头和末尾信息。
-                HStack {
-                    Image(systemName: "externaldrive.fill")
-                        .foregroundStyle(.secondary)
-                    Text(settings.baseDirectory)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Button("选择…") { settings.chooseBaseDirectory() }
-                    Button("打开") { settings.revealBaseDirectory() }
-                }
-                .padding(8)
-            }
-
-            GroupBox("宠物大小") {
-                VStack(spacing: 12) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                        Slider(value: $settings.petScale, in: 0.55...1.45, step: 0.05)
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 24))
-                            .foregroundStyle(.secondary)
-                        Text("\(Int(settings.petScale * 100))%")
-                            .monospacedDigit()
-                            .frame(width: 48, alignment: .trailing)
-                    }
-                    // 齿轮隐藏后仍可通过桌宠右键菜单进入设置。
-                    Toggle("在桌宠右上角显示设置图标", isOn: $settings.showsSettingsButton)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .padding(8)
-            }
-
-            GroupBox("桌宠外观") {
-                VStack(spacing: 12) {
-                    HStack(spacing: 12) {
-                        Label("桌宠透明度", systemImage: "circle.lefthalf.filled")
-                            .frame(width: 110, alignment: .leading)
-                        Slider(value: $settings.petOpacity, in: 0.35...1.0, step: 0.05) { editing in
-                            // 拖动期间实时更新桌宠，结束后再保存最终值。
-                            if !editing {
-                                settings.persistPetOpacity()
-                            }
-                        }
-                        Text("\(Int(settings.petOpacity * 100))%")
-                            .monospacedDigit()
-                            .frame(width: 46, alignment: .trailing)
-                        Button("恢复默认") {
-                            settings.petOpacity = 1.0
-                            settings.persistPetOpacity()
-                        }
-                    }
-                    HStack {
-                        Toggle("靠近屏幕边缘时自动吸附", isOn: $settings.snapToScreenEdges)
-                        Spacer()
-                        Toggle("显示今日数量与连续天数", isOn: $settings.showsDailyBadge)
-                    }
-                }
-                .padding(8)
-            }
-
-            GroupBox("角色、兵器与主题") {
-                HStack(alignment: .top, spacing: 18) {
-                    PetArtwork(skin: settings.petSkin)
-                        .scaledToFit()
-                        .frame(width: 104, height: 124)
-                        .padding(8)
-                        .background(Color.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
-                    VStack(spacing: 11) {
-                        appearancePicker("角色皮肤", selection: $settings.petSkin) {
-                            ForEach(PetSkin.allCases) { skin in
-                                Text("\(skin.label) · \(skin.detail)").tag(skin)
-                            }
-                        }
-                        appearancePicker("兵器光效", selection: $settings.petWeapon) {
-                            ForEach(PetWeapon.allCases) { weapon in
-                                Text(weapon.label).tag(weapon)
-                            }
-                        }
-                        appearancePicker("桌宠主题", selection: $settings.petTheme) {
-                            ForEach(PetTheme.allCases) { theme in
-                                Text(theme.label).tag(theme)
-                            }
-                        }
-                    }
-                }
-                Divider()
-                VStack(alignment: .leading, spacing: 9) {
-                    HStack {
-                        Toggle("播放状态音效", isOn: $settings.soundEffectsEnabled)
-                        Spacer()
-                        Toggle("节气与节日限定表现", isOn: $settings.seasonalEffectsEnabled)
-                    }
-                    Toggle("安静模式（关闭声音，并降低常驻与结果动画幅度）", isOn: $settings.quietMode)
-                    if let moment = SeasonalMoment.current(), settings.seasonalEffectsEnabled {
-                        Label("当前限定：\(moment.name) · \(moment.greeting)", systemImage: moment.symbol)
-                            .font(.caption)
-                            .foregroundStyle(Color.accentColor)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.bottom, 8)
-            }
-
-            GroupBox("分类子目录") {
-                VStack(spacing: 8) {
-                    ForEach(FileCategory.allCases) { category in
-                        HStack(spacing: 10) {
-                            Image(systemName: category.symbol)
-                                .frame(width: 20)
-                                .foregroundStyle(.secondary)
-                            Text(category.rawValue)
-                                .frame(width: 56, alignment: .leading)
-                            TextField(
-                                category.rawValue,
-                                text: Binding(
-                                    get: { settings.subfolder(for: category) },
-                                    set: { settings.updateSubfolder($0, for: category) }
-                                )
-                            )
-                            .textFieldStyle(.roundedBorder)
-                        }
-                    }
-                }
-                .padding(8)
-            }
+                GeneralSettingsView(settings: settings)
             }
 
             if selectedSection == .automation {
@@ -368,6 +244,10 @@ struct SettingsView: View {
             }
             }
 
+            if selectedSection == .music {
+                MusicSettingsView(settings: settings, music: music, history: music.history)
+            }
+
             if selectedSection == .updates {
             GroupBox("版本与更新") {
                 VStack(spacing: 10) {
@@ -395,7 +275,7 @@ struct SettingsView: View {
             }
 
             HStack {
-                Label("同名文件会自动加 -2、-3，不会覆盖原文件", systemImage: "checkmark.shield")
+                Label(selectedSection == .music ? "听歌记录仅保存在本机，可随时导出或清空" : "同名文件会自动加 -2、-3，不会覆盖原文件", systemImage: "checkmark.shield")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -405,11 +285,12 @@ struct SettingsView: View {
         .padding(24)
         }
         .id(selectedSection)
-        .transition(.opacity.combined(with: .move(edge: .trailing)))
         }
         .frame(minWidth: 860, minHeight: 700)
-        .groupBoxStyle(TasteGroupBoxStyle())
-        .background(Color(nsColor: .windowBackgroundColor))
+        .groupBoxStyle(SettingsGroupStyle())
+        .tint(SettingsPalette.accent)
+        .accentColor(SettingsPalette.accent)
+        .background(SettingsPalette.canvas)
         .onChange(of: selectedSection) { section in
             if section == .history { history.pruneExpiredHistory() }
         }
@@ -437,9 +318,7 @@ struct SettingsView: View {
             VStack(spacing: 5) {
                 ForEach(SettingsSection.allCases) { section in
                     Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            selectedSection = section
-                        }
+                        selectedSection = section
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: section.icon)
@@ -449,21 +328,21 @@ struct SettingsView: View {
                                 .font(.system(size: 14, weight: .medium))
                             Spacer()
                             if selectedSection == section {
-                                Circle()
-                                    .fill(Color.accentColor)
-                                    .frame(width: 5, height: 5)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
                             }
                         }
-                        .foregroundStyle(selectedSection == section ? Color.primary : Color.secondary)
+                        .foregroundStyle(selectedSection == section ? SettingsPalette.accent : Color.secondary)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 9)
-                                .fill(selectedSection == section ? Color.primary.opacity(0.075) : Color.clear)
+                                .fill(selectedSection == section ? SettingsPalette.accent.opacity(0.10) : Color.clear)
                         )
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                 }
             }
             .padding(.horizontal, 9)
@@ -513,7 +392,6 @@ struct SettingsView: View {
                 .background(Color.accentColor.opacity(0.09), in: RoundedRectangle(cornerRadius: 12))
         }
         .id(selectedSection)
-        .transition(.opacity.combined(with: .move(edge: .top)))
         .padding(.bottom, 3)
     }
 
@@ -523,21 +401,6 @@ struct SettingsView: View {
         return "上次：\(Self.historyDateFormatter.string(from: date))"
     }
 
-    /// 统一角色外观选择行的标签宽度和菜单尺寸。
-    private func appearancePicker<Value: Hashable, Content: View>(
-        _ title: String,
-        selection: Binding<Value>,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(spacing: 10) {
-            Text(title)
-                .foregroundStyle(.secondary)
-                .frame(width: 72, alignment: .leading)
-            Picker(title, selection: selection, content: content)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-        }
-    }
 
     /// 构建带单位的整数战报指标。
     private func reportValue(_ title: String, value: Int, suffix: String) -> some View {
@@ -611,24 +474,6 @@ struct SettingsView: View {
     }
 }
 
-/// 统一设置页表面：轻背景、细描边和更宽松的标题间距。
-private struct TasteGroupBoxStyle: GroupBoxStyle {
-    /// 将原生 GroupBox 转换为低噪声设置表面，同时保留系统深浅色适配。
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            configuration.label
-                .font(.system(size: 14, weight: .semibold))
-            configuration.content
-        }
-        .padding(16)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.primary.opacity(0.075), lineWidth: 1)
-        )
-    }
-}
 
 /// 在收纳记录页展示一次行动的状态、文件去向、重复与失败详情。
 private struct HistoryOperationCard: View {
