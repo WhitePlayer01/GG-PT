@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// 桌宠对一次收纳任务的四种可见状态。
-private enum PetVisualState: String {
+enum PetVisualState: String {
     case idle
     case receiving
     case failure
@@ -20,8 +20,10 @@ struct PetView: View {
     let openSettings: () -> Void
     let patrolNow: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isTargeted = false
     @State private var swordFrameIndex = 0
+    @State private var swordSequence = 0
     @State private var isPlayingSwordAnimation = false
     @State private var message = "把文件交给关将军"
     @State private var messageVisible = true
@@ -37,25 +39,21 @@ struct PetView: View {
     /// 组合投放高亮、角色动画、设置入口和结果消息气泡。
     var body: some View {
         ZStack {
-            ThemeAura(theme: effectiveTheme)
-
             if settings.seasonalEffectsEnabled, let moment = SeasonalMoment.current() {
                 Image(systemName: moment.symbol)
                     .font(.system(size: 24, weight: .semibold))
-                    .foregroundStyle(themeAccent.opacity(settings.quietMode ? 0.28 : 0.72))
+                    .foregroundStyle(feedbackAccent.opacity(settings.quietMode ? 0.28 : 0.72))
                     .rotationEffect(.degrees(-4))
                     .offset(x: 87, y: -72)
-                    .shadow(color: themeAccent.opacity(0.35), radius: 6)
+                    .shadow(color: feedbackAccent.opacity(0.35), radius: 6)
                     .accessibilityLabel(moment.name)
             }
-
-            if !isListening { WeaponAura(weapon: settings.petWeapon) }
 
             if isTargeted {
                 // 文件悬停时显示金色接收区域，提示当前可以松手投放。
                 Circle()
-                    .fill(themeAccent.opacity(0.16))
-                    .overlay(Circle().stroke(themeAccent.opacity(0.85), lineWidth: 3))
+                    .fill(feedbackAccent.opacity(0.16))
+                    .overlay(Circle().stroke(feedbackAccent.opacity(0.85), lineWidth: 3))
                     .frame(width: 250, height: 250)
                     .blur(radius: 0.3)
                     .transition(.scale.combined(with: .opacity))
@@ -63,7 +61,7 @@ struct PetView: View {
 
             if visualState == .complete && !isTargeted {
                 Circle()
-                    .stroke(themeAccent.opacity(0.38), lineWidth: 4)
+                    .stroke(feedbackAccent.opacity(0.38), lineWidth: 4)
                     .frame(width: 225, height: 225)
                     .transition(.scale.combined(with: .opacity))
             } else if visualState == .failure && !isTargeted {
@@ -75,18 +73,27 @@ struct PetView: View {
 
             Group {
                 if isListening {
-                    ListeningPetArtwork(quiet: settings.quietMode)
-                } else if isPlayingSwordAnimation {
-                    SwordAnimationArtwork(frameIndex: swordFrameIndex, fallbackSkin: settings.petSkin)
+                    ListeningPetArtwork(quiet: settings.quietMode, customArtworks: settings.appearanceLibrary.profiles[settings.appearanceLibrary.activeIndex].artworks)
+                } else if let asset = currentCustomArtwork {
+                    CustomArtworkView(asset: asset, loops: currentArtworkScene.loops, quiet: settings.quietMode) {
+                        if currentArtworkScene == .sword {
+                            SwordAnimationArtwork(frameIndex: swordFrameIndex)
+                        } else {
+                            StatePetArtwork(state: visualState)
+                        }
+                    }
+                    .id("\(currentArtworkScene.rawValue)-\(asset.directory)-\(currentArtworkScene == .sword ? swordSequence : stateSequence)")
+                } else if currentArtworkScene == .sword {
+                    SwordAnimationArtwork(frameIndex: swordFrameIndex)
                 } else {
-                    StatePetArtwork(state: isTargeted ? .receiving : visualState, skin: settings.petSkin)
+                    StatePetArtwork(state: isTargeted ? .receiving : visualState)
                 }
             }
                 .scaledToFit()
                 .frame(width: 245, height: 275)
-                .scaleEffect(characterScale, anchor: .bottom)
-                .rotationEffect(.degrees(isListening ? 0 : reactionRotation), anchor: .bottom)
-                .offset(x: isListening ? 0 : reactionOffset, y: characterYOffset)
+                .scaleEffect(suppressesCharacterMotion ? 1 : characterScale, anchor: .bottom)
+                .rotationEffect(.degrees(isListening || suppressesCharacterMotion ? 0 : reactionRotation), anchor: .bottom)
+                .offset(x: isListening || suppressesCharacterMotion ? 0 : reactionOffset, y: characterYOffset)
                 // 听歌帧已有地面阴影，避免每帧对整个人物重新做模糊合成。
                 .shadow(color: .black.opacity(isListening ? 0 : 0.18), radius: isListening ? 0 : 5, y: 4)
 
@@ -174,18 +181,9 @@ struct PetView: View {
             Button("撤回上次收纳", action: undoLast)
                 .disabled(!history.canUndo)
             Divider()
-            Menu("角色皮肤") {
-                ForEach(PetSkin.allCases) { skin in
-                    Button(skin.label) { settings.petSkin = skin }
-                }
-            }
-            Menu("兵器光效") {
-                ForEach(PetWeapon.allCases) { weapon in
-                    Button(weapon.label) { settings.petWeapon = weapon }
-                }
-            }
+            // 外观统一在设置页编辑，右键菜单只保留常用操作。
             Button(settings.quietMode ? "退出安静模式" : "开启安静模式") {
-                settings.quietMode.toggle()
+                settings.updateCurrentAppearance(quiet: !settings.quietMode)
             }
             Divider()
             Button("退出桌宠") { NSApp.terminate(nil) }
@@ -194,8 +192,12 @@ struct PetView: View {
         .onChange(of: events.sequence) { _ in
             showMessage(events.message, outcome: visualOutcome(for: events.outcome))
         }
+        .onChange(of: events.receivedFilesSequence) { _ in
+            playSwordAnimation()
+        }
         .onChange(of: isTargeted) { targeted in
             guard targeted else { return }
+            playSwordAnimation()
             receivingVariation = Int.random(in: 0..<3)
             message = PetDialogue.receiving(category: nil)
             withAnimation { messageVisible = true }
@@ -208,34 +210,31 @@ struct PetView: View {
     }
 
     private var isListening: Bool {
-        music.isPlaying && settings.musicListeningAppearanceEnabled
+        // 收到文件时先完成挥刀，结束后自动恢复正在播放的听歌形态。
+        guard !isPlayingSwordAnimation, !isTargeted else { return false }
+        return music.isPlaying && settings.musicListeningAppearanceEnabled
     }
 
-    private var effectiveTheme: PetTheme {
-        guard settings.petTheme == .automatic else { return settings.petTheme }
-        if SeasonalMoment.current() != nil, settings.seasonalEffectsEnabled { return .festive }
-        return settings.petSkin == .midnight ? .night : .parchment
-    }
+    // 接收提示和气泡使用固定颜色，不再依赖外观主题。
+    private let feedbackAccent = Color(red: 0.91, green: 0.67, blue: 0.20)
+    private let messageBackground = Color.black.opacity(0.76)
 
-    private var themeAccent: Color {
-        switch effectiveTheme {
-        case .parchment, .automatic: return Color(red: 0.91, green: 0.67, blue: 0.20)
-        case .night: return Color(red: 0.35, green: 0.76, blue: 0.88)
-        case .festive: return Color(red: 0.95, green: 0.31, blue: 0.22)
-        }
+    // 素材的动画自行播放，避免同时叠加角色原有的晃动。
+    private var currentArtworkScene: ArtworkScene {
+        if isPlayingSwordAnimation || isTargeted || visualState == .receiving { return .sword }
+        return ArtworkScene(rawValue: visualState.rawValue) ?? .idle
     }
-
-    private var messageBackground: Color {
-        switch effectiveTheme {
-        case .parchment, .automatic: return .black.opacity(0.76)
-        case .night: return Color(red: 0.04, green: 0.08, blue: 0.18).opacity(0.86)
-        case .festive: return Color(red: 0.28, green: 0.035, blue: 0.025).opacity(0.86)
-        }
+    private var currentCustomArtwork: CustomArtwork? { settings.customArtwork(for: currentArtworkScene) }
+    private var suppressesCharacterMotion: Bool {
+        if reduceMotion { return true }
+        guard let asset = currentCustomArtwork else { return false }
+        return asset.isAnimated || !asset.preservesMotion
     }
 
     /// 不同状态共用轻量位移动画，避免桌面常驻角色产生过强干扰。
     private var characterYOffset: CGFloat {
         if isListening { return 0 }
+        if suppressesCharacterMotion { return 18 }
         if isTargeted {
             let lift: CGFloat = receivingVariation == 1 ? -4 : 0
             return 12 + lift
@@ -327,22 +326,34 @@ struct PetView: View {
 
     /// 按半数关键帧播放挥刀动作，减少透明窗口重绘和图片解码压力。
     private func playSwordAnimation() {
-        guard !isPlayingSwordAnimation else { return }
+        // 新一批文件从头播放；旧回调凭序号失效，不能提前结束新动作。
+        swordSequence += 1
+        let sequence = swordSequence
         isPlayingSwordAnimation = true
         swordFrameIndex = 0
+        if let asset = settings.customArtwork(for: .sword) {
+            let duration = asset.isAnimated ? asset.duration : 1.5
+            DispatchQueue.main.asyncAfter(deadline: .now() + duration) {
+                guard swordSequence == sequence else { return }
+                isPlayingSwordAnimation = false
+                swordFrameIndex = 72
+            }
+            return
+        }
         let frameIndices = Array(stride(from: 0, to: 73, by: 2))
         let framesPerSecond = 12.0
 
         for (position, frameIndex) in frameIndices.dropFirst().enumerated() {
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(position + 1) / framesPerSecond) {
-                guard isPlayingSwordAnimation else { return }
+                guard isPlayingSwordAnimation, swordSequence == sequence else { return }
                 swordFrameIndex = frameIndex
             }
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(frameIndices.count) / framesPerSecond) {
+            guard swordSequence == sequence else { return }
             isPlayingSwordAnimation = false
-            swordFrameIndex = 0
+            swordFrameIndex = 72
         }
     }
 
@@ -462,12 +473,12 @@ struct PetView: View {
 }
 
 /// 从应用资源或开发目录读取四态桌宠立绘。
-private struct StatePetArtwork: View {
+struct StatePetArtwork: View {
     private let artwork: NSImage?
 
     /// 优先从打包后的 Bundle 读取资源，开发运行时回退到源码目录。
-    init(state: PetVisualState, skin: PetSkin) {
-        let artworkName = skin == .classic ? state.artworkName : skin.idleArtworkName
+    init(state: PetVisualState) {
+        let artworkName = state.artworkName
         if let url = Bundle.main.url(forResource: artworkName, withExtension: "png") {
             artwork = ArtworkCache.image(at: url)
         } else {
@@ -496,7 +507,7 @@ private struct StatePetArtwork: View {
 }
 
 /// 读取并缓存原有的逐帧挥刀动画资源。
-private struct SwordAnimationArtwork: View {
+struct SwordAnimationArtwork: View {
     private static let cache: NSCache<NSNumber, NSImage> = {
         let cache = NSCache<NSNumber, NSImage>()
         // 逐帧图约 0.55 MB/张，限制缓存可避免一次动作后长期占用数十 MB。
@@ -506,11 +517,9 @@ private struct SwordAnimationArtwork: View {
     }()
 
     private let artwork: NSImage?
-    private let fallbackSkin: PetSkin
 
-    init(frameIndex: Int, fallbackSkin: PetSkin) {
+    init(frameIndex: Int) {
         artwork = Self.load(frameIndex: frameIndex)
-        self.fallbackSkin = fallbackSkin
     }
 
     private static func load(frameIndex: Int) -> NSImage? {
@@ -539,7 +548,7 @@ private struct SwordAnimationArtwork: View {
             if let artwork {
                 Image(nsImage: artwork).resizable()
             } else {
-                PetArtwork(skin: fallbackSkin)
+                PetArtwork()
             }
         }
     }
@@ -547,68 +556,8 @@ private struct SwordAnimationArtwork: View {
 
 /// 设置页与首次引导沿用待机形象，不参与桌宠状态切换。
 struct PetArtwork: View {
-    var skin: PetSkin = .classic
 
     var body: some View {
-        StatePetArtwork(state: .idle, skin: skin)
-    }
-}
-
-/// 主题氛围使用透明径向光，不增加桌宠窗口的实色背景。
-private struct ThemeAura: View {
-    let theme: PetTheme
-
-    var body: some View {
-        Circle()
-            .fill(
-                RadialGradient(
-                    colors: [accent.opacity(0.08), .clear],
-                    center: .center,
-                    startRadius: 12,
-                    endRadius: 132
-                )
-            )
-            .frame(width: 264, height: 264)
-            .scaleEffect(0.99)
-            .offset(y: 18)
-    }
-
-    private var accent: Color {
-        switch theme {
-        case .parchment, .automatic: return Color(red: 0.93, green: 0.67, blue: 0.18)
-        case .night: return Color(red: 0.22, green: 0.62, blue: 0.86)
-        case .festive: return Color(red: 0.95, green: 0.22, blue: 0.16)
-        }
-    }
-}
-
-/// 用光刃和徽记区分兵器款式，同时保持原始角色轮廓与拖放热区稳定。
-private struct WeaponAura: View {
-    let weapon: PetWeapon
-
-    var body: some View {
-        ZStack {
-            Capsule()
-                .fill(color.opacity(0.14))
-                .frame(width: 8, height: 122)
-                .blur(radius: 5)
-                .rotationEffect(.degrees(-43))
-                .offset(x: -68, y: -27)
-            Image(systemName: weapon.symbol)
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(color.opacity(0.9))
-                .padding(6)
-                .background(.black.opacity(0.48), in: Circle())
-                .offset(x: -94, y: -89)
-        }
-        .shadow(color: color.opacity(0.42), radius: 4)
-    }
-
-    private var color: Color {
-        switch weapon {
-        case .greenDragon: return Color(red: 0.24, green: 0.78, blue: 0.45)
-        case .ember: return Color(red: 1.0, green: 0.34, blue: 0.10)
-        case .frost: return Color(red: 0.35, green: 0.82, blue: 1.0)
-        }
+        StatePetArtwork(state: .idle)
     }
 }

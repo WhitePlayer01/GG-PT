@@ -256,9 +256,16 @@ final class OperationHistoryStore: ObservableObject {
 /// 在应用各服务和桌宠界面之间传递一次性状态消息。
 final class PetEventStore: ObservableObject {
     @Published private(set) var sequence = 0
+    @Published private(set) var receivedFilesSequence = 0
     private(set) var message = ""
     private(set) var outcome: PetEventOutcome = .neutral
     private(set) var category: FileCategory?
+
+    /* 文件接收使用独立信号；即使收纳结果紧接着发布，也不会吞掉挥刀触发。
+     普通提示、撤回和空巡查不发送此信号。 */
+    func receivedFiles() {
+        receivedFilesSequence += 1
+    }
 
     /// 发布新消息并递增序号，确保相同文字也能再次触发界面更新。
     func announce(

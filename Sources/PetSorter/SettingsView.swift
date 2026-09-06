@@ -1,9 +1,10 @@
 import SwiftUI
 import AppKit
 
-/// 设置页的七个任务导向分区。
+/// 设置页按收纳任务和外观编辑划分分区。
 private enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "常规"
+    case appearance = "外观与动画"
     case automation = "自动化"
     case rules = "高级军令"
     case report = "战报"
@@ -16,6 +17,7 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .general: return "slider.horizontal.3"
+        case .appearance: return "photo.on.rectangle.angled"
         case .automation: return "clock.arrow.2.circlepath"
         case .rules: return "list.bullet.rectangle.portrait"
         case .report: return "chart.bar.xaxis"
@@ -27,7 +29,8 @@ private enum SettingsSection: String, CaseIterable, Identifiable {
 
     var subtitle: String {
         switch self {
-        case .general: return "收纳位置、桌宠外观与基础分类"
+        case .general: return "收纳位置、基础行为与文件分类"
+        case .appearance: return "三套外观方案，为每个场景选择图片与动画"
         case .automation: return "让桌面和下载目录按计划保持整洁"
         case .rules: return "用来源、类型、大小和时间定义精确军令"
         case .report: return "查看今日行动和最近一次可撤回记录"
@@ -66,6 +69,10 @@ struct SettingsView: View {
 
             if selectedSection == .general {
                 GeneralSettingsView(settings: settings)
+            }
+
+            if selectedSection == .appearance {
+                AppearanceSettingsView(settings: settings)
             }
 
             if selectedSection == .automation {
@@ -275,7 +282,7 @@ struct SettingsView: View {
             }
 
             HStack {
-                Label(selectedSection == .music ? "听歌记录仅保存在本机，可随时导出或清空" : "同名文件会自动加 -2、-3，不会覆盖原文件", systemImage: "checkmark.shield")
+                Label(selectedSection == .appearance ? "外观素材仅保存在本机，预览不会执行文件收纳" : (selectedSection == .music ? "听歌记录仅保存在本机，可随时导出或清空" : "同名文件会自动加 -2、-3，不会覆盖原文件"), systemImage: "checkmark.shield")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -306,7 +313,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("云长卫")
                         .font(.system(size: 17, weight: .bold, design: .rounded))
-                    Text("配置中军帐")
+                    Text("桌面陪伴 · 收纳助手")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -342,6 +349,7 @@ struct SettingsView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(settings.isImportingArtwork)
                     .accessibilityAddTraits(selectedSection == section ? .isSelected : [])
                 }
             }
@@ -378,7 +386,7 @@ struct SettingsView: View {
         HStack(alignment: .center, spacing: 16) {
             VStack(alignment: .leading, spacing: 5) {
                 Text(selectedSection.rawValue)
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 27, weight: .semibold))
                     .tracking(-0.5)
                 Text(selectedSection.subtitle)
                     .foregroundStyle(.secondary)

@@ -3,16 +3,21 @@ import SwiftUI
 /// 听歌形态采用固定节奏的轻晃，不声称与歌曲的真实节拍同步。
 struct ListeningPetArtwork: View {
     var quiet = false
+    var playing = true
+    var customArtworks: [String: CustomArtwork] = [:]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var playlist = ListeningAnimationPlaylist()
     @State private var variant: ListeningAnimationVariant = .sway
     @State private var startedAt = Date()
+    @State private var elapsed = 0.0
+    private var paused: Bool { reduceMotion || !playing }
     @State private var lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: quiet || lowPower ? 1.0 / 12.0 : 1.0 / 24.0, paused: reduceMotion)) { context in
-            ListeningPetFrame(time: reduceMotion ? 0 : max(0, context.date.timeIntervalSince(startedAt)),
-                              still: reduceMotion, variant: variant, intensity: quiet ? 0.35 : 1)
+        TimelineView(.animation(minimumInterval: quiet || lowPower ? 1.0 / 12.0 : 1.0 / 24.0, paused: paused)) { context in
+            ListeningPetFrame(time: reduceMotion ? 0 : elapsed + (paused ? 0 : max(0, context.date.timeIntervalSince(startedAt))),
+                              still: reduceMotion, variant: variant, intensity: quiet ? 0.35 : 1,
+                              customArtwork: customArtworks[ArtworkScene.listening.key(variant: variant)], customPlaying: playing)
                 .id(variant)
                 .transition(.opacity)
         }
@@ -20,8 +25,13 @@ struct ListeningPetArtwork: View {
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
             lowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         }
-        .task(id: reduceMotion) {
-            guard !reduceMotion else { return }
+        .onChange(of: paused) { value in
+            // 预览暂停时保留时钟进度，恢复后不跳过停留期间。
+            if value { elapsed += max(0, Date().timeIntervalSince(startedAt)) }
+            else { startedAt = Date() }
+        }
+        .task(id: paused) {
+            guard !paused else { return }
             while !Task.isCancelled {
                 do { try await Task.sleep(nanoseconds: UInt64(ListeningAnimationVariant.segmentDuration * 1_000_000_000)) }
                 catch { return }
@@ -29,6 +39,7 @@ struct ListeningPetArtwork: View {
                 withAnimation(.easeInOut(duration: 0.45)) {
                     variant = playlist.next()
                     startedAt = Date()
+                    elapsed = 0
                 }
             }
         }
@@ -42,6 +53,9 @@ struct ListeningPetFrame: View {
     var still = false
     var variant: ListeningAnimationVariant = .sway
     var intensity: Double = 1
+    var customArtwork: CustomArtwork? = nil
+    var showsCustomErrors = false
+    var customPlaying = true
     private let gold = Color(red: 0.92, green: 0.71, blue: 0.31)
     private static func artwork(for variant: ListeningAnimationVariant) -> NSImage? {
         let path = Bundle.main.url(forResource: variant.artworkName, withExtension: "png")
@@ -51,7 +65,7 @@ struct ListeningPetFrame: View {
     }
 
     private func movement(_ phase: Double) -> (rotation: Double, x: Double, y: Double, stretch: Double) {
-        guard !still else { return (0, 0, 0, 1) }
+        guard !still, customArtwork?.isAnimated != true, customArtwork?.preservesMotion != false else { return (0, 0, 0, 1) }
         switch variant {
         case .sway: return (sin(phase) * 3.2, 0, -abs(sin(phase)) * 3, 1 + sin(phase * 2) * 0.006)
         case .nod: return (sin(phase) * 1.2, 0, sin(phase * 2) * 3, 1 + sin(phase * 2) * 0.020)
@@ -85,8 +99,15 @@ struct ListeningPetFrame: View {
                 }
             }
             if let artwork = Self.artwork(for: variant) ?? Self.artwork(for: .sway) {
-                Image(nsImage: artwork)
-                    .resizable().scaledToFit()
+                Group {
+                    if let customArtwork {
+                        CustomArtworkView(asset: customArtwork, playing: !still && customPlaying, quiet: intensity < 1, showsErrors: showsCustomErrors) {
+                            Image(nsImage: artwork).resizable().scaledToFit()
+                        }
+                    } else {
+                        Image(nsImage: artwork).resizable().scaledToFit()
+                    }
+                }
                     .frame(width: 214, height: 263)
                     .scaleEffect(x: 1, y: motion.stretch, anchor: .bottom)
                     .rotationEffect(.degrees(motion.rotation), anchor: UnitPoint(x: 0.5, y: 0.88))

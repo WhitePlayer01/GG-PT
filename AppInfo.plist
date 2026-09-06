@@ -40,6 +40,8 @@
     <!-- 以桌宠辅助应用运行，不常驻 Dock。 -->
     <key>NSAppleEventsUsageDescription</key>
     <string>开启听歌记录后，读取播放器的歌名、歌手和播放状态，在本机保存听歌记录。</string>
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>开启网易云歌曲识别后，仅截取网易云主窗口底部播放条，在本机识别歌名和歌手；画面不会保存或上传。</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

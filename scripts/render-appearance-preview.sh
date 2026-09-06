@@ -1,0 +1,11 @@
+#!/bin/zsh
+# 渲染原生设置页截图；不启动桌宠及音乐或收纳服务。
+set -euo pipefail
+PROJECT_DIR="${0:A:h:h}"
+cd "$PROJECT_DIR"
+sources=(Sources/PetSorter/*.swift)
+sources=(${sources:#Sources/PetSorter/PetSorterApp.swift})
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+  swiftc -swift-version 5 -target arm64-apple-macos13.0 -module-cache-path .build/ModuleCache \
+  $sources scripts/render-appearance-preview.swift -o .build/appearance-preview
+.build/appearance-preview

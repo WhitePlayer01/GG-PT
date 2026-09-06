@@ -119,6 +119,14 @@ enum FileCategory: String, CaseIterable, Identifiable {
 @MainActor
 /// 管理所有用户设置，并在属性变更时持久化到 UserDefaults。
 final class SettingsStore: ObservableObject {
+    // 三套方案共用不可变素材副本，草稿在设置页内维护。
+    @Published private(set) var appearanceLibrary = AppearanceLibrary()
+    @Published private(set) var appearanceError = ""
+    // 未提交草稿跨设置分区保留，但不写入磁盘或影响桌宠。
+    var appearanceDraft: AppearanceProfile?
+    var appearanceEditingIndex: Int?
+    @Published var isImportingArtwork = false
+
     // 基础收纳、外观和引导设置。
     @Published var baseDirectory: String { didSet { defaults.set(baseDirectory, forKey: "baseDirectory") } }
     @Published var subfolders: [String: String] { didSet { defaults.set(subfolders, forKey: "subfolders") } }
@@ -134,6 +142,7 @@ final class SettingsStore: ObservableObject {
     @Published var organizeByMonthFolder: Bool {
         didSet { defaults.set(organizeByMonthFolder, forKey: "organizeByMonthFolder") }
     }
+    @Published var neteaseSongRecognitionEnabled: Bool { didSet { defaults.set(neteaseSongRecognitionEnabled, forKey: "neteaseSongRecognitionEnabled") } }
     @Published var neteaseTrackingEnabled: Bool { didSet { defaults.set(neteaseTrackingEnabled, forKey: "neteaseTrackingEnabled") } }
     @Published var musicListeningAppearanceEnabled: Bool { didSet { defaults.set(musicListeningAppearanceEnabled, forKey: "musicListeningAppearanceEnabled") } }
     @Published var musicTrackingEnabled: Bool { didSet { defaults.set(musicTrackingEnabled, forKey: "musicTrackingEnabled") } }
@@ -146,15 +155,6 @@ final class SettingsStore: ObservableObject {
     }
     @Published var showsSettingsButton: Bool {
         didSet { defaults.set(showsSettingsButton, forKey: "showsSettingsButton") }
-    }
-    @Published var petSkin: PetSkin {
-        didSet { defaults.set(petSkin.rawValue, forKey: "petSkin") }
-    }
-    @Published var petWeapon: PetWeapon {
-        didSet { defaults.set(petWeapon.rawValue, forKey: "petWeapon") }
-    }
-    @Published var petTheme: PetTheme {
-        didSet { defaults.set(petTheme.rawValue, forKey: "petTheme") }
     }
     @Published var soundEffectsEnabled: Bool {
         didSet { defaults.set(soundEffectsEnabled, forKey: "soundEffectsEnabled") }
@@ -178,58 +178,116 @@ final class SettingsStore: ObservableObject {
     // 拖动滑杆时实时发布桌宠窗口透明度，结束拖动后再统一持久化。
     @Published var petOpacity: Double
 
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
 
     /// 从本机偏好设置加载配置，并为首次运行提供安全默认值。
-    init() {
-        baseDirectory = UserDefaults.standard.string(forKey: "baseDirectory")
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        baseDirectory = defaults.string(forKey: "baseDirectory")
             ?? FileManager.default.homeDirectoryForCurrentUser
                 .appendingPathComponent("Documents/云长卫").path
-        subfolders = UserDefaults.standard.dictionary(forKey: "subfolders") as? [String: String]
+        subfolders = defaults.dictionary(forKey: "subfolders") as? [String: String]
             ?? Dictionary(uniqueKeysWithValues: FileCategory.allCases.map { ($0.rawValue, $0.rawValue) })
-        let savedScale = UserDefaults.standard.double(forKey: "petScale")
+        let savedScale = defaults.double(forKey: "petScale")
         petScale = savedScale == 0 ? 1.0 : min(max(savedScale, 0.55), 1.45)
-        onboardingDirectoryChosen = UserDefaults.standard.bool(forKey: "onboardingDirectoryChosen")
-        onboardingSampleDropped = UserDefaults.standard.bool(forKey: "onboardingSampleDropped")
-        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-        automaticallyChecksForUpdates = UserDefaults.standard.object(forKey: "automaticallyChecksForUpdates") as? Bool ?? true
+        onboardingDirectoryChosen = defaults.bool(forKey: "onboardingDirectoryChosen")
+        onboardingSampleDropped = defaults.bool(forKey: "onboardingSampleDropped")
+        hasCompletedOnboarding = defaults.bool(forKey: "hasCompletedOnboarding")
+        automaticallyChecksForUpdates = defaults.object(forKey: "automaticallyChecksForUpdates") as? Bool ?? true
         // 已保存的军令使用 JSON 数据存储，方便以后扩展规则字段。
-        if let data = UserDefaults.standard.data(forKey: "sortingRules"),
+        if let data = defaults.data(forKey: "sortingRules"),
            let decoded = try? JSONDecoder().decode([SortingRule].self, from: data) {
             sortingRules = decoded
         } else {
             sortingRules = []
         }
-        detectDuplicates = UserDefaults.standard.object(forKey: "detectDuplicates") as? Bool ?? true
+        detectDuplicates = defaults.object(forKey: "detectDuplicates") as? Bool ?? true
         // 新版改为单层年月目录；升级时沿用此前相关目录开关的状态。
-        organizeByMonthFolder = UserDefaults.standard.object(forKey: "organizeByMonthFolder") as? Bool
-            ?? UserDefaults.standard.object(forKey: "organizeByDateFolder") as? Bool
-            ?? UserDefaults.standard.bool(forKey: "organizeByYearMonth")
-        neteaseTrackingEnabled = UserDefaults.standard.bool(forKey: "neteaseTrackingEnabled")
-        musicListeningAppearanceEnabled = UserDefaults.standard.object(forKey: "musicListeningAppearanceEnabled") as? Bool ?? true
-        musicTrackingEnabled = UserDefaults.standard.bool(forKey: "musicTrackingEnabled")
-        monitorDesktop = UserDefaults.standard.bool(forKey: "monitorDesktop")
-        monitorDownloads = UserDefaults.standard.bool(forKey: "monitorDownloads")
-        let savedInterval = UserDefaults.standard.integer(forKey: "monitorIntervalMinutes")
+        organizeByMonthFolder = defaults.object(forKey: "organizeByMonthFolder") as? Bool
+            ?? defaults.object(forKey: "organizeByDateFolder") as? Bool
+            ?? defaults.bool(forKey: "organizeByYearMonth")
+        neteaseSongRecognitionEnabled = UserDefaults.standard.bool(forKey: "neteaseSongRecognitionEnabled")
+        neteaseTrackingEnabled = defaults.bool(forKey: "neteaseTrackingEnabled")
+        musicListeningAppearanceEnabled = defaults.object(forKey: "musicListeningAppearanceEnabled") as? Bool ?? true
+        musicTrackingEnabled = defaults.bool(forKey: "musicTrackingEnabled")
+        monitorDesktop = defaults.bool(forKey: "monitorDesktop")
+        monitorDownloads = defaults.bool(forKey: "monitorDownloads")
+        let savedInterval = defaults.integer(forKey: "monitorIntervalMinutes")
         monitorIntervalMinutes = [5, 15, 30, 60].contains(savedInterval) ? savedInterval : 30
-        lastPatrolDate = UserDefaults.standard.object(forKey: "lastPatrolDate") as? Date
+        lastPatrolDate = defaults.object(forKey: "lastPatrolDate") as? Date
         smartNamingStyle = SmartNamingStyle(
-            rawValue: UserDefaults.standard.string(forKey: "smartNamingStyle") ?? ""
+            rawValue: defaults.string(forKey: "smartNamingStyle") ?? ""
         ) ?? .original
-        showsSettingsButton = UserDefaults.standard.object(forKey: "showsSettingsButton") as? Bool ?? true
-        petSkin = PetSkin(rawValue: UserDefaults.standard.string(forKey: "petSkin") ?? "") ?? .classic
-        petWeapon = PetWeapon(rawValue: UserDefaults.standard.string(forKey: "petWeapon") ?? "") ?? .greenDragon
-        petTheme = PetTheme(rawValue: UserDefaults.standard.string(forKey: "petTheme") ?? "") ?? .automatic
-        soundEffectsEnabled = UserDefaults.standard.object(forKey: "soundEffectsEnabled") as? Bool ?? true
-        quietMode = UserDefaults.standard.bool(forKey: "quietMode")
-        seasonalEffectsEnabled = UserDefaults.standard.object(forKey: "seasonalEffectsEnabled") as? Bool ?? true
-        snapToScreenEdges = UserDefaults.standard.object(forKey: "snapToScreenEdges") as? Bool ?? true
-        showsDailyBadge = UserDefaults.standard.object(forKey: "showsDailyBadge") as? Bool ?? true
-        savedPetScreenID = UserDefaults.standard.string(forKey: "savedPetScreenID") ?? ""
-        savedPetPositionX = UserDefaults.standard.object(forKey: "savedPetPositionX") as? Double ?? -1
-        savedPetPositionY = UserDefaults.standard.object(forKey: "savedPetPositionY") as? Double ?? -1
-        let savedPetOpacity = UserDefaults.standard.double(forKey: "petOpacity")
+        showsSettingsButton = defaults.object(forKey: "showsSettingsButton") as? Bool ?? true
+        soundEffectsEnabled = defaults.object(forKey: "soundEffectsEnabled") as? Bool ?? true
+        quietMode = defaults.bool(forKey: "quietMode")
+        seasonalEffectsEnabled = defaults.object(forKey: "seasonalEffectsEnabled") as? Bool ?? true
+        snapToScreenEdges = defaults.object(forKey: "snapToScreenEdges") as? Bool ?? true
+        showsDailyBadge = defaults.object(forKey: "showsDailyBadge") as? Bool ?? true
+        savedPetScreenID = defaults.string(forKey: "savedPetScreenID") ?? ""
+        savedPetPositionX = defaults.object(forKey: "savedPetPositionX") as? Double ?? -1
+        savedPetPositionY = defaults.object(forKey: "savedPetPositionY") as? Double ?? -1
+        let savedPetOpacity = defaults.double(forKey: "petOpacity")
         petOpacity = savedPetOpacity == 0 ? 1.0 : min(max(savedPetOpacity, 0.35), 1.0)
+        // 升级时第一套继承当前外观，保持用户已经选择的大小和透明度。
+        let initial = AppearanceProfile(scale: petScale, opacity: petOpacity, quiet: quietMode,
+            seasonal: seasonalEffectsEnabled, sound: soundEffectsEnabled)
+        appearanceLibrary = AppearanceLibrary(initial: initial)
+        if let data = defaults.data(forKey: "appearanceLibrary") {
+            do {
+                let saved = try JSONDecoder().decode(AppearanceLibrary.self, from: data)
+                guard saved.isValid else { throw CocoaError(.coderReadCorrupt) }
+                appearanceLibrary = saved
+                applyAppearanceProfile(saved.profiles[saved.activeIndex])
+            } catch {
+                appearanceError = "外观方案读取失败，原配置已保留。请先备份偏好设置后重试。"
+            }
+        }
+    }
+
+    /* 保存成功后再发布整套配置。编辑未启用的方案不会影响桌面；
+     激活方案时同步旧外观属性，让已有窗口继续同步大小和透明度。 */
+    @discardableResult
+    func saveAppearance(_ library: AppearanceLibrary) -> Bool {
+        guard appearanceError.isEmpty, library.isValid else { return false }
+        do {
+            let data = try JSONEncoder().encode(library)
+            defaults.set(data, forKey: "appearanceLibrary")
+            appearanceLibrary = library
+            applyAppearanceProfile(library.profiles[library.activeIndex])
+            return true
+        } catch {
+            appearanceError = "外观方案未保存：\(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// 让方案成为基础外观的唯一来源，也修复上次退出时未同步完的旧字段。
+    private func applyAppearanceProfile(_ profile: AppearanceProfile) {
+        petScale = profile.scale
+        petOpacity = profile.opacity
+        persistPetOpacity()
+        quietMode = profile.quiet
+        seasonalEffectsEnabled = profile.seasonal
+        soundEffectsEnabled = profile.sound
+    }
+
+    /// 右键快捷设置同时更新当前方案，避免下次切换时恢复旧值。
+    func updateCurrentAppearance(quiet: Bool) {
+        var library = appearanceLibrary
+        let index = library.activeIndex
+        let previous = library.profiles[index]
+        library.profiles[index].quiet = quiet
+        if saveAppearance(library), appearanceEditingIndex == index, appearanceDraft == previous {
+            appearanceDraft = library.profiles[index]
+        }
+    }
+
+    func customArtwork(for scene: ArtworkScene, variant: ListeningAnimationVariant = .sway) -> CustomArtwork? {
+        // 收纳完成统一保留内置反馈；历史自定义数据不删除，也不再参与显示。
+        guard scene != .complete else { return nil }
+        let profile = appearanceLibrary.profiles[appearanceLibrary.activeIndex]
+        return profile.artworks[scene.key(variant: variant)]
     }
 
     /// 返回分类对应的自定义子目录；空值回退到分类中文名。

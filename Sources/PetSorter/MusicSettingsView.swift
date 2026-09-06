@@ -10,10 +10,10 @@ struct MusicSettingsView: View {
     var body: some View {
         GroupBox("让云长卫记住你听过的歌") {
             VStack(alignment: .leading, spacing: 12) {
-                Toggle("自动记录正在播放的歌曲", isOn: $settings.musicTrackingEnabled)
-                Text("支持 Apple Music、Spotify，以及装有新版网页扩展的网易云、QQ 音乐、Spotify、Apple Music 和 YouTube Music 网页。网页需提供歌名、歌手和播放状态。另可检测网易云音乐 3.x 桌面版的播放状态，暂不记录其歌名；QQ 音乐桌面版暂未接入。")
+                SettingsToggleRow(title: "自动记录正在播放的歌曲", detail: "歌名、歌手与收听时间保存在本机", isOn: $settings.musicTrackingEnabled)
+                Text("支持 Apple Music、Spotify，以及装有新版网页扩展的网易云、QQ 音乐、Spotify、Apple Music 和 YouTube Music 网页。网页需提供歌名、歌手和播放状态。网易云音乐 3.x 桌面版可通过下方的播放条识别记录歌曲；QQ 音乐桌面版暂未接入。")
                     .font(.caption).foregroundStyle(.secondary)
-                Text("只读取歌曲信息或播放状态，不录音、不录屏、不上传。收听时长按约 5 秒间隔估算；暂停、休眠不计入。Apple Music、Spotify 需要自动化授权。")
+                Text("歌曲数据不上传、不录音。网易云通过辅助功能读取播放状态和歌曲文字，无需录屏。收听时长按约 5 秒间隔估算；暂停、休眠不计入。Apple Music、Spotify 需要自动化授权。")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
                 Label(music.status, systemImage: "waveform")
@@ -32,12 +32,26 @@ struct MusicSettingsView: View {
         GroupBox("网易云桌面版") {
             VStack(alignment: .leading, spacing: 12) {
                 Toggle("检测网易云播放状态", isOn: $settings.neteaseTrackingEnabled)
-                Text("需要辅助功能权限。读取网易云菜单的播放／暂停状态，用于切换听歌形态，无需录屏或录音。暂不读取桌面版歌名、歌手，也不生成歌曲记录；如需记录歌曲，可使用已连接扩展的网易云网页。")
+                Text("辅助功能权限用于判断播放／暂停。开启歌曲识别后，读取主窗口底部播放条的歌名、歌手，与本地歌单核对后记录专辑和收听时间。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("连接网易云…") { music.connectNetease() }
                     Label(music.neteaseStatus, systemImage: "music.note")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                Divider()
+                SettingsToggleRow(title: "识别网易云歌曲", detail: "通过辅助功能读取播放条文字，无需屏幕录制权限", isOn: $settings.neteaseSongRecognitionEnabled)
+                HStack {
+                    Button("允许识别歌曲…") {
+                        settings.neteaseSongRecognitionEnabled = true
+                        music.connectNetease()
+                    }
+                    Text("首次确认约需两次检测")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                DisclosureGroup("识别范围与使用说明") {
+                    Text("需保持网易云主窗口和底部播放条可见。只有歌名和歌手与本地播放队列唯一匹配，且连续两次一致时才写入记录；最小化、迷你模式或文字截断时只保持听歌形态。")
+                        .font(.caption).foregroundStyle(.secondary).padding(.top, 6)
                 }
             }.padding(8)
         }

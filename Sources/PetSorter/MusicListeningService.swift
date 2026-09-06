@@ -1,18 +1,26 @@
 import AppKit
 import Combine
 
-/// 使用播放器公开脚本接口和浏览器提供的媒体信息，不录音、不录屏。
+/// 播放状态独立驱动外观；可选歌曲识别在后台执行，不阻塞播放轮询。
 @MainActor
 final class MusicListeningService: ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var neteaseStatus = "网易云尚未连接"
     @Published private(set) var currentTrack: MusicTrack?
     @Published private(set) var status = "听歌记录已关闭"
-    let history = MusicHistoryStore()
+    let history: MusicHistoryStore
     private let settings: SettingsStore
     private var subscription: AnyCancellable?
     private var timer: Timer?
+    private var workspaceSubscriptions: Set<AnyCancellable> = []
     private var polling = false
+    private let neteaseRunning: () -> Bool
+    private let readPlayback: () async -> NeteaseReading
+    private let readSong: () async -> (track: MusicTrack?, message: String)
+    private var songRecognitionTask: Task<Void, Never>?
+    private var songRecognitionID: UUID?
+    private var pendingNeteaseTrack: MusicTrack?
+    private var pendingNeteaseMatches = 0
     private var continuity = PlaybackContinuity()
     private var activeSourceID: String?
     private var generation = 0
@@ -21,9 +29,27 @@ final class MusicListeningService: ObservableObject {
     private var browserSourceID: String?
     private let queue = DispatchQueue(label: "com.local.PetSorter.music-reader", qos: .utility)
 
-    init(settings: SettingsStore) { self.settings = settings }
+    init(settings: SettingsStore, history: MusicHistoryStore? = nil,
+         neteaseRunning: @escaping () -> Bool = { !NSRunningApplication.runningApplications(withBundleIdentifier: NeteasePlaybackReader.bundleID).isEmpty },
+         readPlayback: @escaping () async -> NeteaseReading = { await NeteasePlaybackReader.read() },
+         readSong: @escaping () async -> (track: MusicTrack?, message: String) = { await NeteaseSongReader.read() }) {
+        self.settings = settings
+        self.history = history ?? MusicHistoryStore()
+        self.neteaseRunning = neteaseRunning
+        self.readPlayback = readPlayback
+        self.readSong = readSong
+    }
 
     func start() {
+        /* 没有音乐应用运行时不保留轮询定时器；系统通知负责在启动后恢复检测。 */
+        workspaceSubscriptions.removeAll()
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification,
+                     NSWorkspace.didWakeNotification] {
+            NSWorkspace.shared.notificationCenter.publisher(for: name)
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] _ in self?.poll() }
+                .store(in: &workspaceSubscriptions)
+        }
         subscription = settings.$musicTrackingEnabled.removeDuplicates().sink { [weak self] enabled in
             self?.configure(enabled)
         }
@@ -45,13 +71,12 @@ final class MusicListeningService: ObservableObject {
         activeSourceID = nil
         browserLastSeen = nil
         browserSourceID = nil
+        discardSongRecognition()
+        pendingNeteaseTrack = nil
+        pendingNeteaseMatches = 0
         history.endSession()
         status = enabled ? "等待播放歌曲…" : "听歌记录已关闭"
         guard enabled else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.poll() }
-        }
-        timer?.tolerance = 1
         // @Published 在属性写入前发送事件，下一轮再读取设置。
         DispatchQueue.main.async { [weak self] in self?.poll() }
     }
@@ -63,22 +88,41 @@ final class MusicListeningService: ObservableObject {
         poll()
     }
 
+    /* 活跃播放器维持原有五秒响应；网页心跳需要定时检查失联。
+     只在需求改变时创建或释放定时器，避免每轮重置时钟。 */
+    private func updatePollingTimer() {
+        let nativeRunning = (settings.neteaseTrackingEnabled && neteaseRunning()) ||
+            ["com.apple.Music", "com.spotify.client"].contains {
+                !NSRunningApplication.runningApplications(withBundleIdentifier: $0).isEmpty
+            }
+        let needed = settings.musicTrackingEnabled && (nativeRunning || browserLastSeen != nil)
+        guard needed else { timer?.invalidate(); timer = nil; return }
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.poll() }
+        }
+        timer?.tolerance = 1 // 允许系统合并后台唤醒。
+    }
+
     func poll() {
+        updatePollingTimer()
         guard settings.musicTrackingEnabled, !polling else { return }
         polling = true
         let token = generation
         Task {
             var fallback: String?
             if settings.neteaseTrackingEnabled,
-               !NSRunningApplication.runningApplications(withBundleIdentifier: NeteasePlaybackReader.bundleID).isEmpty {
-                let result = await NeteasePlaybackReader.read()
+               neteaseRunning() {
+                let result = await readPlayback()
                 guard token == generation, settings.musicTrackingEnabled else { polling = false; return }
                 if neteaseStatus != result.message { neteaseStatus = result.message }
                 fallback = result.message
                 if result.isPlaying == true {
-                    accept(nil, playing: true, position: nil, sourceID: NeteasePlaybackReader.bundleID)
-                    if status != result.message { status = result.message }
+                    // 播放状态先驱动外观；可选歌曲识别在后台执行，不阻塞下一轮轮询。
+                    accept(activeSourceID == NeteasePlaybackReader.bundleID ? currentTrack : nil, playing: true, position: nil,
+                           sourceID: NeteasePlaybackReader.bundleID)
                     polling = false
+                    beginSongRecognitionIfNeeded()
                     return
                 }
                 if result.isPlaying == nil, activeSourceID == NeteasePlaybackReader.bundleID, isPlaying {
@@ -90,10 +134,16 @@ final class MusicListeningService: ObservableObject {
                     return
                 }
                 if activeSourceID == NeteasePlaybackReader.bundleID {
+                    discardSongRecognition()
+                    pendingNeteaseTrack = nil
+                    pendingNeteaseMatches = 0
                     accept(nil, playing: false, position: nil)
                 }
             } else if settings.neteaseTrackingEnabled {
-                if activeSourceID == NeteasePlaybackReader.bundleID { accept(nil, playing: false, position: nil) }
+                if activeSourceID == NeteasePlaybackReader.bundleID {
+                    discardSongRecognition()
+                    accept(nil, playing: false, position: nil)
+                }
                 if neteaseStatus != "请打开网易云音乐" { neteaseStatus = "请打开网易云音乐" }
                 fallback = neteaseStatus
             }
@@ -103,6 +153,45 @@ final class MusicListeningService: ObservableObject {
             }
             pollScriptPlayers(token: token, fallback: fallback)
         }
+    }
+
+    private func beginSongRecognitionIfNeeded() {
+        guard settings.neteaseSongRecognitionEnabled, songRecognitionTask == nil else { return }
+        let id = UUID()
+        songRecognitionID = id
+        songRecognitionTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await readSong()
+            guard songRecognitionID == id else { return }
+            songRecognitionTask = nil
+            songRecognitionID = nil
+            guard settings.musicTrackingEnabled, settings.neteaseTrackingEnabled,
+                  settings.neteaseSongRecognitionEnabled, isPlaying,
+                  activeSourceID == NeteasePlaybackReader.bundleID else { return }
+            if neteaseStatus != result.message { neteaseStatus = result.message }
+            guard let track = result.track else {
+                pendingNeteaseTrack = nil
+                pendingNeteaseMatches = 0
+                return
+            }
+            if pendingNeteaseTrack?.key == track.key {
+                pendingNeteaseMatches += 1
+            } else {
+                pendingNeteaseTrack = track
+                pendingNeteaseMatches = 1
+            }
+            guard pendingNeteaseMatches >= 2 else {
+                status = "已识别网易云歌曲 · 等待再次确认"
+                return
+            }
+            accept(track, playing: true, position: nil, sourceID: NeteasePlaybackReader.bundleID)
+        }
+    }
+
+    private func discardSongRecognition() {
+        songRecognitionID = nil
+        songRecognitionTask?.cancel()
+        songRecognitionTask = nil
     }
 
     private func pollScriptPlayers(token: Int, fallback: String?) {
@@ -187,6 +276,7 @@ final class MusicListeningService: ObservableObject {
         }
         browserSourceID = sourceID
         browserLastSeen = playing ? Date() : nil
+        updatePollingTimer()
         func number(_ key: String) -> Double? {
             guard let value = Double(values[key] ?? ""), value.isFinite, value >= 0 else { return nil }
             return value

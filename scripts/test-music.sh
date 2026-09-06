@@ -19,3 +19,18 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
   Sources/PetSorter/ListeningAnimationVariant.swift Tests/PetSorterTests/ListeningPlaybackTests.swift \
   -o .build/listening-playback-tests
 .build/listening-playback-tests
+
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+  swiftc -swift-version 5 -module-cache-path .build/ModuleCache \
+  Sources/PetSorter/MusicHistoryStore.swift Sources/PetSorter/NeteasePlaybackReader.swift \
+  Sources/PetSorter/NeteaseSongReader.swift Tests/PetSorterTests/NeteaseSongTests.swift \
+  -o .build/netease-song-tests
+.build/netease-song-tests
+
+SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+  swiftc -swift-version 5 -module-cache-path .build/ModuleCache \
+  Sources/PetSorter/MusicHistoryStore.swift Sources/PetSorter/NeteasePlaybackReader.swift \
+  Sources/PetSorter/NeteaseSongReader.swift Sources/PetSorter/ListeningAnimationVariant.swift \
+  Sources/PetSorter/MusicListeningService.swift Tests/PetSorterTests/MusicServicePlaybackTests.swift \
+  -o .build/music-service-playback-tests
+.build/music-service-playback-tests

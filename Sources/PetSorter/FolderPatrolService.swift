@@ -54,6 +54,8 @@ final class FolderPatrolService: ObservableObject {
             return
         }
 
+        // 只有实际接收到候选文件才挥刀，空巡查保持原姿态。
+        events.receivedFiles()
         let result = FileOrganizer.organize(candidates, settings: settings)
         history.record(result, source: "自动巡查")
         if result.movedCount > 0 {

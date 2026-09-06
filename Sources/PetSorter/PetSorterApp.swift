@@ -9,7 +9,10 @@ struct PetSorterApp: App {
 
     /// 不创建 SwiftUI 默认窗口；所有实际窗口由 AppDelegate 按需创建。
     var body: some Scene {
-        Settings { EmptyView() }
+        Settings {
+            SettingsView(settings: appDelegate.settings, history: appDelegate.history,
+                         updates: appDelegate.updates, music: appDelegate.music, patrol: appDelegate.patrol)
+        }
     }
 }
 
@@ -95,6 +98,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
                 settings: settings,
                 history: history
             )
+            // 网页素材进入收纳流程后，与 Finder 投放使用同一挥刀反馈。
+            if result.movedCount > 0 || result.duplicateCount > 0 { events.receivedFiles() }
             if result.movedCount > 0 {
                 let message = "收纳成功：已归入\(result.categoryNames.joined(separator: "、"))"
                 events.announce(

@@ -4,6 +4,8 @@ import ApplicationServices
 struct NeteaseReading {
     var isPlaying: Bool?
     var message: String
+    var track: MusicTrack? = nil
+    var position: Double? = nil
 }
 
 /// 读取网易云原生「控制」菜单的辅助功能属性，不获取图像、音频，也不点击菜单。
