@@ -5,7 +5,9 @@ PROJECT_DIR="${0:A:h:h}"
 cd "$PROJECT_DIR"
 sources=(Sources/PetSorter/*.swift)
 sources=(${sources:#Sources/PetSorter/PetSorterApp.swift})
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+[[ -d "$SDK_PATH" ]] || SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+SDKROOT="${SDKROOT:-$SDK_PATH}" \
   swiftc -swift-version 5 -target arm64-apple-macos13.0 -module-cache-path .build/ModuleCache \
   $sources scripts/render-appearance-preview.swift -o .build/appearance-preview
 .build/appearance-preview

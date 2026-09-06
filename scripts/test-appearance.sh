@@ -4,7 +4,9 @@ set -euo pipefail
 PROJECT_DIR="${0:A:h:h}"
 cd "$PROJECT_DIR"
 mkdir -p .build
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+SDK_PATH="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+[[ -d "$SDK_PATH" ]] || SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
+SDKROOT="${SDKROOT:-$SDK_PATH}" \
   swiftc -swift-version 5 -target arm64-apple-macos13.0 -module-cache-path .build/ModuleCache \
   Sources/PetSorter/CharacterSystem.swift Sources/PetSorter/ListeningAnimationVariant.swift \
   Sources/PetSorter/AppearanceProfile.swift Sources/PetSorter/VideoArtwork.swift Sources/PetSorter/CustomArtworkView.swift \

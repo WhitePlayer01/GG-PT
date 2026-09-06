@@ -15,8 +15,19 @@ if [[ ${#VERSION_PARTS[@]} -ne 3 ]] || [[ "$CURRENT_VERSION" != <->.<->.<-> ]] |
     echo "无法自动递增版本：当前版本必须为 x.y.z，构建号必须为整数。" >&2
     exit 1
 fi
-VERSION="${VERSION_PARTS[1]}.${VERSION_PARTS[2]}.$((VERSION_PARTS[3] + 1))"
-BUILD_NUMBER="$((CURRENT_BUILD + 1))"
+# 本机双击打包时仍自动递增补丁版本。GitHub Release 由标签传入精确版本，
+# 避免标签、文件名和 App 内版本不一致。
+if [[ -n "${RELEASE_VERSION:-}" ]]; then
+    VERSION="$RELEASE_VERSION"
+    BUILD_NUMBER="${RELEASE_BUILD_NUMBER:-$CURRENT_BUILD}"
+    if [[ "$VERSION" != <->.<->.<-> ]] || [[ "$BUILD_NUMBER" != <-> ]]; then
+        echo "Release 版本必须为 x.y.z，构建号必须为整数。" >&2
+        exit 1
+    fi
+else
+    VERSION="${VERSION_PARTS[1]}.${VERSION_PARTS[2]}.$((VERSION_PARTS[3] + 1))"
+    BUILD_NUMBER="$((CURRENT_BUILD + 1))"
+fi
 ARCHITECTURE="$(uname -m)"
 DMG_PATH="$DIST_DIR/$APP_NAME-$VERSION-$ARCHITECTURE.dmg"
 RW_DMG_PATH="$DIST_DIR/.$APP_NAME-$VERSION-$ARCHITECTURE.rw.dmg"
@@ -43,7 +54,7 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "版本自动更新：$CURRENT_VERSION（构建 $CURRENT_BUILD）→ $VERSION（构建 $BUILD_NUMBER）"
+echo "本次打包版本：$CURRENT_VERSION（构建 $CURRENT_BUILD）→ $VERSION（构建 $BUILD_NUMBER）"
 /usr/bin/sed -i '' \
     -e "/<key>CFBundleShortVersionString<\\/key>/{n;s#<string>[^<]*</string>#<string>$VERSION</string>#;}" \
     -e "/<key>CFBundleVersion<\\/key>/{n;s#<string>[^<]*</string>#<string>$BUILD_NUMBER</string>#;}" \

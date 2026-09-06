@@ -181,6 +181,17 @@ swift run PetSorter
 
 每次运行 DMG 打包流程，脚本都会自动递增补丁版本和构建号，例如从 `0.4.0（构建 4）` 更新为 `0.4.1（构建 5）`。版本会同步写入 `AppInfo.plist`、设置界面和安装包文件名；若打包失败则自动恢复原版本。
 
+## 自动发布 GitHub Release
+
+`main` 上的代码验证并推送完成后，创建严格的 `vX.Y.Z` 标签并推送：
+
+```bash
+git tag -a v0.4.3 -m "Release v0.4.3"
+git push origin v0.4.3
+```
+
+GitHub Actions 会自动校验标签、运行音乐链路测试、构建对应版本的 DMG，并将 DMG 和 `SHA256SUMS.txt` 发布到 Releases。不符合 `vX.Y.Z` 的标签会直接失败，避免应用内版本与 Release 名称不一致。
+
 打开生成的安装包后，将“云长卫”拖入“Applications”即可安装。`dist` 是本机构建目录，已被 Git 忽略，不会把 DMG 二进制文件提交到仓库。
 
 > 当前产物使用本机临时签名，适合本机测试或内部传发。若要公开分发并消除 Gatekeeper 警告，还需要配置 Apple Developer ID 签名与公证。

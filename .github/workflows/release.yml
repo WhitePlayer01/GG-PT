@@ -1,0 +1,61 @@
+name: Release macOS app
+
+on:
+  push:
+    tags:
+      - "v*"
+
+# 发布任务只需要创建 Release，不授予其他仓库写权限。
+permissions:
+  contents: write
+
+concurrency:
+  group: "release-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish DMG
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Validate semantic version tag
+        shell: zsh {0}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_NAME" != v<->.<->.<-> ]]; then
+            print -u2 "Release tag must use vX.Y.Z, received: $GITHUB_REF_NAME"
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Test music integrations
+        shell: zsh {0}
+        run: zsh scripts/test-music.sh
+
+      - name: Build release DMG
+        shell: zsh {0}
+        env:
+          RELEASE_BUILD_NUMBER: "${{ github.run_number }}"
+        run: zsh scripts/build-dmg.sh
+
+      - name: Generate checksum
+        shell: zsh {0}
+        run: |
+          cd dist
+          shasum -a 256 -- *.dmg > SHA256SUMS.txt
+
+      - name: Publish GitHub Release
+        shell: zsh {0}
+        env:
+          GH_TOKEN: "${{ github.token }}"
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/*.dmg dist/SHA256SUMS.txt \
+            --verify-tag \
+            --title "云长卫 $GITHUB_REF_NAME" \
+            --generate-notes

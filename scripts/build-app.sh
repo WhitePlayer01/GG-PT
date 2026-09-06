@@ -9,9 +9,11 @@ BUILD_DIR="$PROJECT_DIR/.build/release"
 APP_DIR="$PROJECT_DIR/dist/$APP_NAME.app"
 LEGACY_APP_DIR="$PROJECT_DIR/dist/二爷收着.app"
 
-# 使用与当前命令行工具匹配的 SDK 构建 release 可执行文件。
+# 当前本机的默认 SDK 与 Swift 小版本不同，优先使用已验证的 15.4；CI 回退到当前 Xcode SDK。
 cd "$PROJECT_DIR"
-SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk \
+LOCAL_SDK="/Library/Developer/CommandLineTools/SDKs/MacOSX15.4.sdk"
+[[ -d "$LOCAL_SDK" ]] || LOCAL_SDK="$(xcrun --sdk macosx --show-sdk-path)"
+SDKROOT="${SDKROOT:-$LOCAL_SDK}" \
 CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/ModuleCache" \
 swift build -c release --disable-sandbox --scratch-path .build
 
