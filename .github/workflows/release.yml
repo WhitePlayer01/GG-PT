@@ -34,8 +34,9 @@ jobs:
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
 
       # 发布前同时验证文件移动边界，避免只验证音乐链路。
+      # zsh 不是 GitHub 内置 shell，必须用 {0} 指定临时脚本的位置才能运行。
       - name: Test organization workflows
-        shell: zsh
+        shell: zsh {0}
         run: zsh scripts/test-organization.sh
 
       - name: Test music integrations
