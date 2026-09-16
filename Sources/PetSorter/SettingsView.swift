@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 
 /// 设置页按收纳任务和外观编辑划分分区。
-private enum SettingsSection: String, CaseIterable, Identifiable {
+enum SettingsSection: String, CaseIterable, Identifiable {
     case general = "常规"
     case appearance = "外观与动画"
     case automation = "自动化"
@@ -49,7 +49,11 @@ struct SettingsView: View {
     @ObservedObject var music: MusicListeningService
     @ObservedObject var patrol: FolderPatrolService
     @State private var rulePreviewText = ""
-    @State private var selectedSection: SettingsSection = .general
+    @State private var historyQuery = ""
+    @State private var historyCategory = "全部分类"
+    @State private var historyTodayOnly = false
+    @State private var showsPatrolPreview = false
+    @State var selectedSection: SettingsSection = .general
 
     private static let historyDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -111,6 +115,11 @@ struct SettingsView: View {
                         Text(patrolStatusText)
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                        Button("预览待整理") {
+                            patrol.preparePreview()
+                            showsPatrolPreview = true
+                        }
+                        .disabled(patrol.isRunning || (!settings.monitorDesktop && !settings.monitorDownloads))
                         Button(patrol.isRunning ? "巡查中…" : "立即巡查") { patrol.patrolNow() }
                             .disabled(patrol.isRunning || (!settings.monitorDesktop && !settings.monitorDownloads))
                     }
@@ -130,6 +139,22 @@ struct SettingsView: View {
             if selectedSection == .rules {
             GroupBox("自定义军令（从上到下优先匹配）") {
                 VStack(spacing: 12) {
+                    HStack {
+                        Button { settings.addRule() } label: {
+                            Label("新增军令", systemImage: "plus")
+                        }
+                        Menu("从模板添加") {
+                            ForEach(SortingRuleTemplate.allCases) { template in
+                                Button(template.rawValue) { settings.sortingRules.append(template.makeRule()) }
+                            }
+                        }
+                        Button(action: previewRuleMatch) {
+                            Label("预览文件命中", systemImage: "scope")
+                        }
+                        Spacer()
+                    }
+                    Text("模板按文件名关键词和类型匹配，添加后默认关闭。请修改为自己的关键词和目标目录后再启用，启用后可预览命中。")
+                        .font(.caption).foregroundStyle(.secondary)
                     if settings.sortingRules.isEmpty {
                         Text("还没有自定义规则，未命中的文件继续使用八大分类。")
                             .foregroundStyle(.secondary)
@@ -144,15 +169,6 @@ struct SettingsView: View {
                             moveDown: { settings.moveRule(id: rule.id, offset: 1) },
                             remove: { settings.removeRule(id: rule.id) }
                         )
-                    }
-                    HStack {
-                        Button { settings.addRule() } label: {
-                            Label("新增军令", systemImage: "plus")
-                        }
-                        Button(action: previewRuleMatch) {
-                            Label("预览文件命中", systemImage: "scope")
-                        }
-                        Spacer()
                     }
                     if !rulePreviewText.isEmpty {
                         Text(rulePreviewText)
@@ -226,12 +242,26 @@ struct SettingsView: View {
                 .padding(8)
             }
 
-            if history.operations.isEmpty {
+            HStack {
+                TextField("查找文件名、原名、来源或路径", text: $historyQuery)
+                    .textFieldStyle(.roundedBorder)
+                Picker("分类", selection: $historyCategory) {
+                    Text("全部分类").tag("全部分类")
+                    ForEach(Array(Set(history.operations.flatMap { $0.items.map(\.categoryName) })).sorted(), id: \.self) { name in
+                        Text(name).tag(name)
+                    }
+                }.frame(width: 180)
+                Toggle("仅今天", isOn: $historyTodayOnly)
+                Button("重置") { historyQuery = ""; historyCategory = "全部分类"; historyTodayOnly = false }
+            }
+            Text("在最近三天、最多 100 次行动中查找；筛选后只显示匹配文件，行动统计仍为原批次统计。")
+                .font(.caption).foregroundStyle(.secondary)
+            if filteredHistory.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "tray")
                         .font(.system(size: 32))
                         .foregroundStyle(.tertiary)
-                    Text("近三天还没有收纳记录")
+                    Text(history.operations.isEmpty ? "近三天还没有收纳记录" : "没有匹配的记录")
                         .fontWeight(.medium)
                     Text("拖放、自动巡查和网页投递都会记录在这里。")
                         .font(.caption)
@@ -241,10 +271,11 @@ struct SettingsView: View {
                 .padding(.vertical, 70)
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(history.operations) { operation in
+                    ForEach(filteredHistory) { operation in
                         HistoryOperationCard(
                             operation: operation,
-                            baseDirectory: settings.baseDirectory
+                            baseDirectory: settings.baseDirectory,
+                            visibleItems: operation.items.filter { HistorySearch.matches($0, operation: operation, query: historyQuery, category: historyCategory) }
                         )
                     }
                 }
@@ -298,8 +329,20 @@ struct SettingsView: View {
         .tint(SettingsPalette.accent)
         .accentColor(SettingsPalette.accent)
         .background(SettingsPalette.canvas)
+        .sheet(isPresented: $showsPatrolPreview, onDismiss: { patrol.closePreview() }) {
+            PatrolPreviewSheet(patrol: patrol)
+        }
         .onChange(of: selectedSection) { section in
             if section == .history { history.pruneExpiredHistory() }
+        }
+    }
+
+    /* 筛选只读取本机历史，不扫描磁盘或变更撤回批次。
+     来源名称命中时显示该批次；分类和日期仍需同时满足。 */
+    private var filteredHistory: [SortOperation] {
+        history.operations.filter { operation in
+            (!historyTodayOnly || Calendar.current.isDateInToday(operation.createdAt)) &&
+            HistorySearch.matches(operation, query: historyQuery, category: historyCategory)
         }
     }
 
@@ -487,6 +530,7 @@ struct SettingsView: View {
 private struct HistoryOperationCard: View {
     let operation: SortOperation
     let baseDirectory: String
+    let visibleItems: [FileMoveRecord]
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -545,7 +589,7 @@ private struct HistoryOperationCard: View {
                 Divider()
             }
 
-            ForEach(operation.items) { item in
+            ForEach(visibleItems) { item in
                 HStack(spacing: 10) {
                     Image(systemName: "doc.fill")
                         .foregroundStyle(.secondary)
@@ -572,7 +616,7 @@ private struct HistoryOperationCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if FileManager.default.fileExists(atPath: item.destinationPath) {
-                        Button("显示") { reveal(item.destinationPath) }
+                        Button("在 Finder 中显示") { reveal(item.destinationPath) }
                             .buttonStyle(.borderless)
                     } else {
                         Text("文件已移动")

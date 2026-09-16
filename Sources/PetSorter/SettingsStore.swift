@@ -53,6 +53,38 @@ struct SortingRule: Codable, Identifiable, Equatable {
     }
 }
 
+/* 场景模板只填充规则，不自动启用；用户仍可修改关键词和目标。
+ 每次创建新 UUID，追加在末尾，保留已有军令的优先级。 */
+enum SortingRuleTemplate: String, CaseIterable, Identifiable {
+    case screenshots = "截图收纳"
+    case courses = "课程资料"
+    case projects = "项目文档"
+    var id: String { rawValue }
+
+    func makeRule() -> SortingRule {
+        var rule = SortingRule()
+        rule.name = rawValue
+        // 不附加隐含的大小或时间门槛，条件在编辑器中完整显示。
+        rule.maximumSizeMB = 0
+        rule.createdWithinDays = 0
+        switch self {
+        case .screenshots:
+            rule.fileNameContains = "截图"
+            rule.extensions = "png,jpg,jpeg"
+            rule.destinationFolder = "图片/截图"
+        case .courses:
+            rule.fileNameContains = "课程"
+            rule.extensions = "pdf,ppt,pptx,doc,docx"
+            rule.destinationFolder = "学习/课程资料"
+        case .projects:
+            rule.fileNameContains = "项目"
+            rule.extensions = "pdf,doc,docx,xls,xlsx,ppt,pptx,md,txt"
+            rule.destinationFolder = "工作/项目文档"
+        }
+        return rule
+    }
+}
+
 /// 定义整理后的文件名生成方案。
 enum SmartNamingStyle: String, CaseIterable, Identifiable {
     case original

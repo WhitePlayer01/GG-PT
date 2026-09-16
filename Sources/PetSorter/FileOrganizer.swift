@@ -56,13 +56,49 @@ struct UndoResult {
     var restoredCount: Int { restoredItemIDs.count }
 }
 
-@MainActor
+/* 在主线程拍下整理设置，后台扫描和移动只读取这份值。
+ 这样预览确认后不会因用户切换设置而改变目标，也不跨线程访问界面状态。 */
+struct SortingConfiguration: Equatable {
+    let baseDirectory: String
+    let subfolders: [String: String]
+    let sortingRules: [SortingRule]
+    let detectDuplicates: Bool
+    let organizeByMonthFolder: Bool
+    let smartNamingStyle: SmartNamingStyle
+
+    @MainActor init(settings: SettingsStore) {
+        baseDirectory = settings.baseDirectory
+        subfolders = settings.subfolders
+        sortingRules = settings.sortingRules
+        detectDuplicates = settings.detectDuplicates
+        organizeByMonthFolder = settings.organizeByMonthFolder
+        smartNamingStyle = settings.smartNamingStyle
+    }
+
+    // 沿用设置中的目录名，缺少配置时回退到内置分类。
+    func subfolder(for category: FileCategory) -> String {
+        let value = subfolders[category.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return value.isEmpty ? category.rawValue : value
+    }
+}
+
 /// 执行规则匹配、分类、查重、命名、移动和撤回的核心整理引擎。
 enum FileOrganizer {
+    /// 原有交互入口保留；后台任务直接使用不可变配置入口。
+    @MainActor static func organize(_ urls: [URL], settings: SettingsStore,
+                                   forcedDestinationFolder: String? = nil) -> SortResult {
+        organize(urls, settings: SortingConfiguration(settings: settings),
+                 forcedDestinationFolder: forcedDestinationFolder)
+    }
+
+    @MainActor static func preview(_ source: URL, settings: SettingsStore) -> SortPreview {
+        preview(source, settings: SortingConfiguration(settings: settings))
+    }
+
     /// 按当前设置整理一批文件，并为每个成功移动的文件生成可撤回记录。
     static func organize(
         _ urls: [URL],
-        settings: SettingsStore,
+        settings: SortingConfiguration,
         forcedDestinationFolder: String? = nil
     ) -> SortResult {
         let manager = FileManager.default
@@ -124,7 +160,7 @@ enum FileOrganizer {
     }
 
     /// 只计算规则命中、智能名称和目标目录，不移动所选文件。
-    static func preview(_ source: URL, settings: SettingsStore) -> SortPreview {
+    static func preview(_ source: URL, settings: SortingConfiguration) -> SortPreview {
         let manager = FileManager.default
         let category = category(for: source, manager: manager)
         let rule = matchingRule(for: source, rules: settings.sortingRules, manager: manager)
@@ -300,7 +336,7 @@ enum FileOrganizer {
     private static func preferredName(
         for source: URL,
         category: FileCategory,
-        settings: SettingsStore
+        settings: SortingConfiguration
     ) -> String {
         guard settings.smartNamingStyle != .original else { return source.lastPathComponent }
         var isDirectory: ObjCBool = false

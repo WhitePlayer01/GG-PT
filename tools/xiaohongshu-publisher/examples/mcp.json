@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "xiaohongshu-publisher": {
+      "command": "node",
+      "args": [
+        "/absolute/path/xiaohongshu-publisher/src/server.mjs"
+      ]
+    }
+  }
+}

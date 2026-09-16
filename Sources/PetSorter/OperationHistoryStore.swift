@@ -64,6 +64,26 @@ struct SortOperation: Codable, Identifiable {
     }
 }
 
+/* 查询原名和新名，支持智能重命名后的找回；纯失败、纯重复记录也可检索。
+ 分类筛选遵循记录中的分类或军令名称，不改动原始记录。 */
+enum HistorySearch {
+    static func matches(_ item: FileMoveRecord, operation: SortOperation, query: String, category: String) -> Bool {
+        guard category == "全部分类" || item.categoryName == category else { return false }
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 来源信息属于整批文件，命中时保留该批符合分类的文件。
+        return term.isEmpty || [item.fileName, item.originalPath ?? "", item.destinationPath,
+            operation.source, operation.sourceTitle, operation.sourceURL].contains { $0.localizedStandardContains(term) }
+    }
+
+    static func matches(_ operation: SortOperation, query: String, category: String) -> Bool {
+        if operation.items.contains(where: { matches($0, operation: operation, query: query, category: category) }) { return true }
+        guard category == "全部分类" else { return false }
+        let term = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return term.isEmpty || ([operation.source, operation.sourceTitle, operation.sourceURL] +
+            operation.duplicateFileNames + operation.failureMessages).contains { $0.localizedStandardContains(term) }
+    }
+}
+
 /// 聚合当天的操作次数、移动数、重复空间和分类分布。
 struct DailySortSummary {
     let operationCount: Int
@@ -83,11 +103,11 @@ final class OperationHistoryStore: ObservableObject {
     private let historyURL: URL
 
     /// 确定历史文件位置并加载已有记录。
-    init() {
+    init(historyURL: URL? = nil) {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         // 沿用旧版数据目录名称，确保升级为“云长卫”后仍能读取撤回历史。
         let directory = support.appendingPathComponent("二爷收着", isDirectory: true)
-        historyURL = directory.appendingPathComponent("history.json")
+        self.historyURL = historyURL ?? directory.appendingPathComponent("history.json")
         load()
         pruneExpiredHistory()
     }

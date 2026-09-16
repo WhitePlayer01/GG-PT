@@ -1,0 +1,10 @@
+{
+  "account": "替换为创作者页面显示的账号名",
+  "title": "桌面整理开发日记",
+  "content": "我给桌宠加了一个新动作。\n\n这次记录真实的开发过程和使用感受。\n\n你希望它下次学会什么？\n\n#桌宠 #独立开发",
+  "images": [
+    "/absolute/path/01-cover.png",
+    "/absolute/path/02-content.png"
+  ],
+  "mode": "draft"
+}

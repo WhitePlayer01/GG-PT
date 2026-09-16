@@ -33,6 +33,11 @@ jobs:
           fi
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
 
+      # 发布前同时验证文件移动边界，避免只验证音乐链路。
+      - name: Test organization workflows
+        shell: zsh
+        run: zsh scripts/test-organization.sh
+
       - name: Test music integrations
         shell: zsh {0}
         run: zsh scripts/test-music.sh
